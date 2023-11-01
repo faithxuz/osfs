@@ -43,8 +43,9 @@ fn read(buf: &mut String) {
     }
 }
 
-fn parse(input: &str) -> Vec<&str> {
-    input.split_ascii_whitespace().collect()
+fn parse(input: &str) -> (String, Vec<&str>) {
+    let v: Vec<&str> = input.split_ascii_whitespace().collect();
+    (String::from(v[0]), (v[1..]).to_vec())
 }
 
 fn init() {
@@ -72,11 +73,11 @@ fn main() {
     loop {
         print(&format!("user{}:{} $ ", ctx.user, ctx.wd));
         read(&mut buf);
-        let args = parse(&buf);
-        if args[0] == "exit" {
+        let (cmd, args) = parse(&buf);
+        if cmd == "exit" {
             break;
         }
-        print(&format!("you inputted: {args:?}\n"));
+        print(&format!("you inputted: {cmd} + {args:?}\n"));
         // send request to simdisk: ctx + args
         // and receive response
         // output the result
