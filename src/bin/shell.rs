@@ -1,5 +1,6 @@
 use std::io::{self, BufRead, Write};
 
+#[derive(Debug)]
 struct Context {
     user: u8,
     wd: String
@@ -20,21 +21,15 @@ impl Context {
 }
 
 fn print(s: &str) {
-    let stdout = io::stdout();
-    {
-        let mut lock = stdout.lock();
-        lock.write_all(s.as_bytes()).unwrap();
-        lock.flush().unwrap();
-    }
+    let mut stdout = io::stdout().lock();
+    stdout.write_all(s.as_bytes()).unwrap();
+    stdout.flush().unwrap();
 }
 
 fn read(buf: &mut String) {
     buf.clear();
-    let stdin = io::stdin();
-    {
-        let mut lock = stdin.lock();
-        lock.read_line(buf).unwrap();
-    }
+    let mut stdin = io::stdin().lock();
+    stdin.read_line(buf).unwrap();
     if buf.ends_with('\n') {
         buf.pop();
         if buf.ends_with('\r') {
@@ -43,9 +38,8 @@ fn read(buf: &mut String) {
     }
 }
 
-fn parse(input: &str) -> (String, Vec<&str>) {
-    let v: Vec<&str> = input.split_ascii_whitespace().collect();
-    (String::from(v[0]), (v[1..]).to_vec())
+fn parse(input: &str) -> Vec<&str> {
+    input.split_ascii_whitespace().collect()
 }
 
 fn init() {
@@ -73,14 +67,17 @@ fn main() {
     loop {
         print(&format!("user{}:{} $ ", ctx.user, ctx.wd));
         read(&mut buf);
-        let (cmd, args) = parse(&buf);
-        if cmd == "exit" {
+        let args = parse(&buf);
+        if args[0] == "exit" {
             break;
         }
-        print(&format!("you inputted: {cmd} + {args:?}\n"));
+        print(&format!("you inputted: {args:?}\n"));
+
         // send request to simdisk: ctx + args
         // and receive response
+
         // output the result
+
         // workding directory may change
     }
 }

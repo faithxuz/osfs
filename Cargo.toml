@@ -2,7 +2,15 @@
 name = "simdisk"
 version = "0.1.0"
 edition = "2021"
+authors = ["Faith <faithxuz@gmail.com>", "Kidom <kidommoc@gmail.com>"]
+homepage = "https://github.com/faithxuz/osfs"
+repository = "https://github.com/faithxuz/osfs"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde-big-array = "0.5"
+time = { version = "0.3", features = ["macros", "local-offset"] }
+threadpool = "1.8"
