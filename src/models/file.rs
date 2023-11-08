@@ -107,11 +107,15 @@ pub struct Fd {
 }
 
 impl Fd {
-    pub fn read() -> Result<Vec<u8>> {
+    pub fn read(&self) -> Result<Vec<u8>> {
         Ok(Vec::<u8>::new())
     }
 
-    pub fn write(buf: &Vec<u8>) -> Result<()> {
+    pub fn write(&mut self, buf: &Vec<u8>) -> Result<()> {
+        Ok(())
+    }
+
+    pub fn append(&mut self, buf: &Vec<u8>) -> Result<()> {
         Ok(())
     }
 }
@@ -143,19 +147,22 @@ impl Dd {
 
 // ====== FN ======
 
-pub fn metadata(path: &str) -> Result<Metadata> {
+use std::sync::Arc;
+use super::Disk;
+
+pub fn metadata(disk: Arc<Disk>, path: &str) -> Result<Metadata> {
     Ok(Metadata {})
 }
 
-pub fn open_file(path: &str) -> Result<Fd> {
+pub fn open_file(disk: Arc<Disk>, path: &str) -> Result<Fd> {
     Ok(Fd {})
 }
 
-pub fn remove_file(path: &str) -> Result<()> {
+pub fn remove_file(disk: Arc<Disk>, path: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn open_dir(path: &str) -> Result<Dd> {
+pub fn open_dir(disk: Arc<Disk>, path: &str) -> Result<Dd> {
     Ok(Dd {})
 }
 

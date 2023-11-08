@@ -1,5 +1,6 @@
-use std::net::TcpStream;
 use std::error::Error;
+use std::sync::Arc;
+use std::net::TcpStream;
 
 pub mod logger;
 mod utils;
@@ -13,7 +14,7 @@ pub fn init() -> Result<models::Disk, Box<dyn Error>> {
 }
 
 // run in seperated thread
-pub fn handle(disk: models::Disk, stream: TcpStream) {
+pub fn handle(disk: Arc<models::Disk>, stream: TcpStream) {
     // extract stream to http
     // call the corresponding service
 }
