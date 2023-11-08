@@ -37,8 +37,8 @@ fn server() -> SdResult<()>  {
             Err(e) => return Err(Box::new(e))
         };
 
-        pool.execute(move || handle(stream))
+        pool.execute(move || handle(stream));
     }
-    // for EVERY request, call fn handle in a new thread
+
     Ok(())
 }
