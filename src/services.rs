@@ -1,4 +1,3 @@
-pub mod fd;
 pub mod permission;
 
 mod info;

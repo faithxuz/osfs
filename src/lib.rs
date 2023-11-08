@@ -1,15 +1,19 @@
 use std::net::TcpStream;
-use std::result;
 use std::error::Error;
-pub type SdResult<T> = result::Result<T, Box<dyn Error>>;
 
 pub mod logger;
-pub mod disk;
+mod utils;
+mod sedes;
+mod bitmap;
 mod models;
 mod services;
 
+pub fn init() -> Result<models::Disk, Box<dyn Error>> {
+    Ok(models::init()?)
+}
+
 // run in seperated thread
-pub fn handle(stream: TcpStream) {
+pub fn handle(disk: models::Disk, stream: TcpStream) {
     // extract stream to http
     // call the corresponding service
 }

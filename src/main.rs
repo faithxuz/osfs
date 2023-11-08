@@ -14,15 +14,15 @@ use std::net::TcpListener;
 use threadpool::ThreadPool;
 use simdisk::{
     SdResult,
+    init,
     handle,
-    disk::check_disk,
     logger::log
 };
 
 const PORT: u16 = 7735;
 
 fn main() {
-    check_disk().unwrap();
+    init().unwrap();
     log("Simdisk started...");
     server().unwrap();
 }
