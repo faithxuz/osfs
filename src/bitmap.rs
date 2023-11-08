@@ -1,4 +1,4 @@
-pub trait Bitmap: Copy + Clone {
+pub trait Bitmap {
     fn get_map(&self, pos: u32) -> u64;
     fn set_map(&mut self, pos: u32, map: u64);
     fn next_usable(&self) -> Option<u32>;

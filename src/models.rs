@@ -1,14 +1,19 @@
-mod data;
-pub mod superblock;
-pub mod inode;
-pub mod file;
+mod disk;
+mod superblock;
+mod inode;
+mod file;
 
-use crate::SdResult;
+pub use disk::{Disk, DiskError};
+pub use superblock::{Superblock, SuperblockError};
+pub use inode::InodeError;
+pub use file::*;
 
-pub fn init() -> SdResult<()> {
-    data::init()?;
-    superblock::init()?;
-    inode::init()?;
-    file::init()?;
-    Ok(())
+use std::error;
+
+pub fn init() -> Result<Disk, Box<dyn error::Error>> {
+    let mut d = match disk::init() {
+        Ok(d) => d,
+        Err(e) => return Err(Box::new(e))
+    };
+    Ok(d)
 }
