@@ -38,3 +38,15 @@ pub fn u8arr_to_u32(arr: &[u8]) -> u32 {
 pub fn u8arr_to_u64(arr: &[u8]) -> u64 {
     u64::from_be_bytes(<[u8;8]>::try_from(arr).unwrap())
 }
+
+pub fn count_ones_in_u64(n: u64) -> u32 {
+    let mut a: u32 = 0;
+    let mut b: u64 = 1;
+    for _ in 0..64 {
+        if n | b > 0 {
+            a += 1;
+        }
+        b = b << 1;
+    }
+    a
+}
