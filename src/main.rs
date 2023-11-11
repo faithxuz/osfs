@@ -10,38 +10,25 @@
  * data bitmap: 16 blocks
  */
 
-use std::error::Error;
-use std::sync::Arc;
-use std::net::TcpListener;
-use threadpool::ThreadPool;
+use std::sync::mpsc;
+use std::thread;
 use simdisk::{
-    init,
-    handle,
-    logger::log,
-    models::Disk,
+    fs::start_fs,
+    start_server,
+    logger,
 };
 
-const PORT: u16 = 7735;
-
 fn main() {
-    let mut disk = init().unwrap();
-    log("Simdisk started...");
-    server(disk).unwrap();
-}
+    let (fs_tx, fs_rx) = mpsc::channel();
+    let (started_tx, started_rx) = mpsc::channel();
+    let ft = fs_tx.clone();
+    thread::spawn(|| start_fs(started_tx, ft, fs_rx));
 
-fn server(disk: Disk) -> Result<(), Box<dyn Error>>  {
-    let mut d = Arc::new(disk);
-    let listener = TcpListener::bind(format!("127.0.0.1:{PORT}"))?;
-    let pool = ThreadPool::new(4);
-
-    for s in listener.incoming() {
-        let stream = match s {
-            Ok(s) => s,
-            Err(e) => return Err(Box::new(e))
-        };
-
-        pool.execute(move || handle(d.clone(), stream))
+    if let Err(e) = started_rx.recv().unwrap() {
+        logger::log(e);
+        return;
     }
+    logger::log("Simdisk started.");
 
-    Ok(())
+    start_server(fs_tx);
 }
