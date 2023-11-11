@@ -23,3 +23,8 @@ pub use cp::cp;
 
 mod rm;
 pub use rm::rm;
+
+pub struct Context {
+    uid: u8,
+    wd: String,
+}

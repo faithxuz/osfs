@@ -6,6 +6,7 @@ use crate::utils;
 
 use std::{error, fmt};
 use std::io;
+use super::InodeError;
 
 #[derive(Debug)]
 pub enum FileError {
@@ -14,6 +15,7 @@ pub enum FileError {
     FileNotfound,
     ReadErr,
     WriteErr,
+    InodeErr(InodeError),
     IoErr(io::Error),
 }
 
@@ -31,11 +33,44 @@ impl From<io::Error> for FileError {
     }
 }
 
+impl From<InodeError> for FileError {
+    fn from(e: InodeError) -> Self {
+        Self::InodeErr(e)
+    }
+}
+
 type Result<T> = std::result::Result<T, FileError>;
 
 // ====== METADATA ======
 
 pub struct Metadata {
+    name: String,
+    permissions: u16,
+    owner: u8,
+    size: u64,
+    is_dir: bool,
+    /*
+    created: SystemTime,
+    last_accessed: SystemTime,
+    last_modified: SystemTime,
+    */
+}
+
+impl Metadata {
+    pub fn build(name: &str, permissions: u16, owner: u8, size: u64, is_dir: bool) -> Self {
+        Self {
+            name: String::from(name), permissions, owner, size, is_dir
+            // created: 0, last_accessed: 0, last_modified: 0
+        }
+    }
+
+    pub fn is_dir(&self) -> bool {
+        self.is_dir
+    }
+
+    pub fn get_name(&self) -> &str {
+        self.name.as_str()
+    }
 }
 
 // ====== BITMAP ======
@@ -136,7 +171,7 @@ impl Dd {
         Ok(v)
     }
 
-    pub fn add(&mut self) -> Result<()> {
+    pub fn add(&mut self, name: &str) -> Result<()> {
         Ok(())
     }
 
@@ -149,20 +184,29 @@ impl Dd {
 
 use std::sync::Arc;
 use super::Disk;
+use super::inode::{self, Inode, init_bitmap, InodeBitmap};
 
-pub fn metadata(disk: Arc<Disk>, path: &str) -> Result<Metadata> {
-    Ok(Metadata {})
+pub fn metadata(path: &str) -> Result<Metadata> {
+    Ok(Metadata::build("", 0, 0, 0, false))
 }
 
-pub fn open_file(disk: Arc<Disk>, path: &str) -> Result<Fd> {
-    Ok(Fd {})
-}
-
-pub fn remove_file(disk: Arc<Disk>, path: &str) -> Result<()> {
+pub fn create_file(uid: u8, path: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn open_dir(disk: Arc<Disk>, path: &str) -> Result<Dd> {
+pub fn open_file(path: &str) -> Result<Fd> {
+    Ok(Fd {})
+}
+
+pub fn remove_file(path: &str) -> Result<()> {
+    Ok(())
+}
+
+pub fn create_dir(uid: u8, path: &str) -> Result<()> {
+    Ok(())
+}
+
+pub fn open_dir(path: &str) -> Result<Dd> {
     Ok(Dd {})
 }
 
