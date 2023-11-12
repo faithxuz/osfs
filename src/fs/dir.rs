@@ -31,8 +31,8 @@ use std::sync::{Arc, Mutex};
 /// 
 /// `name`: file name
 pub struct Entry {
-    inode: u32,
-    name: String,
+    pub inode: u32,
+    pub name: String,
 }
 
 /// Directory descriptor.
@@ -130,6 +130,10 @@ impl Drop for Dd {
 }
 
 // ====== FN ======
+
+pub fn read_dir_by_inode(inode: u32) -> Result<Vec<Entry>> {
+    todo!()
+}
 
 pub fn handle_open_dir(tx: Sender<FsReq>, path: &str) -> Result<Dd> {
     todo!()

@@ -1,5 +1,5 @@
-mod utils;
 mod bitmap;
+mod utils;
 mod disk;
 
 mod superblock;
@@ -52,8 +52,13 @@ pub enum FsReq {
 
     /// `tx`: send back result
     /// 
-    /// `path`: file path
+    /// `path`: file/directory path
     Metadata(Sender<Result<metadata::Metadata>>, String),
+
+    /// `tx`: send back result
+    /// 
+    /// `inode`: file/directory inode
+    MetadataByInode(Sender<Result<metadata::Metadata>>, u32),
 
     /// `tx`: send back result
     /// 
@@ -205,6 +210,16 @@ pub fn start_fs(
     for received in rx {
         let debug_str = format!("{:?}", &received);
         match received {
+            FsReq::MetadataByInode(tx, inode) => {
+                match metadata::handle_metadata_by_inode(self_tx.clone(), inode) {
+                    Ok(m) => {
+                        if let Err(e) = tx.send(Ok(m)) {
+                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                        };
+                    },
+                    Err(e) => { todo!() }
+                }
+            },
             FsReq::Metadata(tx, path) => {
                 match metadata::handle_metadata(self_tx.clone(), &path) {
                     Ok(m) => {
@@ -337,6 +352,22 @@ pub fn start_fs(
 pub fn metadata(fs_tx: &mut Sender<FsReq>, path: &str) -> Result<metadata::Metadata> {
     let (tx, rx) = mpsc::channel();
     if let Err(e) = fs_tx.send(FsReq::Metadata(tx, String::from(path))) {
+        todo!()
+    }
+    match rx.recv()? {
+        Ok(m) => Ok(m),
+        Err(e) => todo!()
+    }
+}
+
+/// Get metadata of a file or a directory. Return [Metadata].
+/// 
+/// `fs_tx`: sender for sending request
+/// 
+/// `inode`: inode of file or directory
+pub fn metadata_by_inode(fs_tx: &mut Sender<FsReq>, inode: u32) -> Result<metadata::Metadata> {
+    let (tx, rx) = mpsc::channel();
+    if let Err(e) = fs_tx.send(FsReq::MetadataByInode(tx, inode)) {
         todo!()
     }
     match rx.recv()? {
