@@ -1,14 +1,14 @@
 // todo: metadata API; path analysis; uid parameter; Fd struct
 // todo: panic!() => no panic
+
 use getopts::Options;
+use super::{Context, utils};
+use crate::fs::open_file;
 
-use super::Context;
-use crate::logger;
-use crate::models::create_file;
-
-pub fn cat(ctx: Context, args: Vec<&str>) -> (Context, String) {
+// pub fn cat<'a, 'b>(ctx: &'a mut Context, args: Vec<&'b str>) -> (&'a mut Context, String) {
+pub fn cat(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     if args.len() < 1 {
-        return(ctx, String::from("Usage: cat [-nb] <file1> <file2> ..."));
+        return (ctx, String::from("Usage: cat [-nb] <file1> <file2> ..."));
     }
 
     let mut opts = Options::new();
@@ -18,38 +18,47 @@ pub fn cat(ctx: Context, args: Vec<&str>) -> (Context, String) {
     let matches = match opts.parse(&args) {
         Ok(m) => m,
         Err(f) => {
-            return(ctx, f.to_string());
+            return (ctx, f.to_string());
         }
     };
 
     if matches.free.is_empty() {
-        return(ctx, String::from("Usage: cat [-nb] <file1> <file2> ..."));
+        return (ctx, String::from("Usage: cat [-nb] <file1> <file2> ..."));
     }
 
     let number_lines = matches.opt_present("n");
     let number_non_empty_lines = matches.opt_present("b");
 
-    // open_file(?): Fd struct?
-    for file_path in &matches.free {
-        if let Ok(file_content) = std::fs::read_to_string(file_path) {
-            let mut line_number = 1;
+    let mut file_str = String::new();
 
-            for line in file_content.lines() {
-                let mut output_line = String::new();
+    for mut file_path in &matches.free {
+        file_path = match utils::convert_path_to_abs(&ctx.wd, file_path) {
+            Ok(p) => &p,
+            Err(e) => todo!()
+        };
+        let mut file_fd = match open_file(&mut ctx.tx, file_path) {
+            Ok(fd) => fd,
+            Err(e) => return (ctx, format!("Cannot open file: {}", file_path)),
+        };
+        let file_vec = match file_fd.read() {
+            Ok(v) => v,
+            Err(e) => return (ctx, format!("Cannot open file: {}", file_path)),
+        };
 
-                if number_lines {
-                    output_line.push_str(&format!("{:>6}\t", line_number));
-                } else if number_non_empty_lines && !line.trim().is_empty() {
-                    output_line.push_str(&format!("{:>6}\t", line_number));
-                }
+        let lines = file_vec.split(|&c| c == b'\n');
+        let mut output_vec = Vec::new();
+        let mut line_num = 1;
 
-                output_line.push_str(line);
-
-                logger::log(&format!("{}", output_line));
-                line_number += 1;
+        for line in lines {
+            if number_lines || number_non_empty_lines && !line.is_empty() {
+                output_vec.extend(format!("{:>6}\t", line_num).bytes());
+                line_num += 1;
             }
-        } else {
-            logger::log(&format!("Error reading file: {}", file_path));
+
+            output_vec.extend(line);
+            output_vec.push(b'\n');
         }
+        file_str = String::from_utf8_lossy(&output_vec).into_owned();
     }
+    (ctx, file_str)
 }

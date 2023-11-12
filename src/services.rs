@@ -1,5 +1,7 @@
 pub mod permission;
 
+mod utils;
+
 mod info;
 pub use info::info;
 
@@ -24,7 +26,11 @@ pub use cp::cp;
 mod rm;
 pub use rm::rm;
 
+use std::sync::mpsc::Sender;
+use super::fs::FsReq;
+
 pub struct Context {
-    uid: u8,
-    wd: String,
+    pub uid: u8,
+    pub wd: String,
+    pub tx: Sender<FsReq>,
 }
