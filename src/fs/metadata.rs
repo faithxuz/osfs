@@ -152,3 +152,12 @@ impl Metadata {
         Ok(())
     }
 }
+
+// ====== FN =======
+
+use super::FsReq;
+use std::sync::mpsc::Sender;
+
+pub fn handle_metadata(tx: Sender<FsReq>, path: &str) -> Result<Metadata> {
+    todo!()
+}
