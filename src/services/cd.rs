@@ -1,9 +1,13 @@
 use getopts::Options;
-use super::{Context, utils};
+use crate::fs::metadata;
+use super::{Context, utils, permission};
+
+const USAGE: &str = "Usage: cd <directory>";
+const PERMISSION: (bool, bool, bool) = (false, false, true);
 
 pub fn cd(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     if args.len() < 1 {
-        return (ctx, String::from("Usage: cd <path>"));
+        return (ctx, String::from(USAGE));
     }
 
     let mut opts = Options::new();
@@ -16,28 +20,28 @@ pub fn cd(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     };
     
     if matches.free.len() > 1 {
-        return (ctx, String::from("Too many arguments"));
+        return (ctx, String::from("Too many arguments\n"));
     }
 
     let path = &matches.free[0]; 
-    // is_dir: from where?
-    // Where is my future?
-    // Why am I alive?
-    // I might as well die...
-    let is_dir: bool = true;
-    if is_dir {
-        let dir_path = match utils::convert_path_to_abs(&ctx.wd, path) {
-            Ok(p) => p,
-            Err(e) => return (ctx, format!("Cannot convert path {} to absolute path", path)),
-        };
+    let dir_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
+        Ok(p) => p,
+        Err(e) => return (ctx, format!("Cannot convert path '{}' to absolute path\n", path)),
+    };
+    let meta = match metadata(&mut ctx.tx, &dir_path) {
+        Ok(m) => m,
+        Err(e) => return (ctx, format!("Cannot find '{}'\n", path)),
+    };
+
+    let rwx = permission::check_permission(ctx.uid, &meta, PERMISSION);
+    if !rwx {
+        return (ctx, format!("Permission denied\n"));
+    }
+
+    if meta.is_dir() {
         ctx.wd = dir_path;
         (ctx, String::new())
     } else {
-        let file_path = match utils::convert_path_to_abs(&ctx.wd, path) {
-            Ok(p) => p,
-            Err(e) => return (ctx, format!("Cannot convert path {} to absolute path", path)),
-        };
-        ctx.wd = file_path;
-        (ctx, String::new())
+        return (ctx, format!("'{}' is not a directory\n", path));
     }
 }

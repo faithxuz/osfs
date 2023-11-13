@@ -1,14 +1,13 @@
-// todo: metadata API; path analysis; uid parameter; Fd struct
-// todo: panic!() => no panic
-
 use getopts::Options;
-use super::{Context, utils};
-use crate::fs::open_file;
+use super::{Context, utils, permission};
+use crate::fs::{metadata, open_file};
 
-// pub fn cat<'a, 'b>(ctx: &'a mut Context, args: Vec<&'b str>) -> (&'a mut Context, String) {
+const USAGE: &str = "Usage: cat [-nb] <file1> <file2> ...";
+const PERMISSION: (bool, bool, bool) = (true, false, false);
+
 pub fn cat(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     if args.len() < 1 {
-        return (ctx, String::from("Usage: cat [-nb] <file1> <file2> ..."));
+        return (ctx, String::from(USAGE));
     }
 
     let mut opts = Options::new();
@@ -23,26 +22,53 @@ pub fn cat(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     };
 
     if matches.free.is_empty() {
-        return (ctx, String::from("Usage: cat [-nb] <file1> <file2> ..."));
+        return (ctx, String::from(USAGE));
     }
 
     let number_lines = matches.opt_present("n");
     let number_non_empty_lines = matches.opt_present("b");
 
-    let mut file_str = String::new();
+    let mut return_str = String::new();
 
-    for mut file_path in &matches.free {
-        file_path = match utils::convert_path_to_abs(&ctx.wd, file_path) {
-            Ok(p) => &p,
-            Err(e) => todo!()
+    for path in &matches.free {
+        let file_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
+            Ok(p) => p,
+            Err(e) => {
+                return_str += &format!("Cannot convert '{}' to absolute path\n", path);
+                continue;
+            },
         };
-        let mut file_fd = match open_file(&mut ctx.tx, file_path) {
+        let meta = match metadata(&mut ctx.tx, &file_path) {
+            Ok(m) => m,
+            Err(e) => {
+                return_str += &format!("Cannot find '{}'\n", path);
+                continue;
+            },
+        };
+
+        let rwx = permission::check_permission(ctx.uid, &meta, PERMISSION);
+        if !rwx {
+            return_str += &format!("Permission denied\n");
+            continue;
+        }
+
+        if meta.is_dir() {
+            return_str += &format!("'{}' is a directory", file_path)[..];
+        }
+
+        let mut file_fd = match open_file(&mut ctx.tx, &file_path) {
             Ok(fd) => fd,
-            Err(e) => return (ctx, format!("Cannot open file: {}", file_path)),
+            Err(e) => {
+                return_str += &format!("Cannot open file: '{}'\n", path);
+                continue;
+            },
         };
         let file_vec = match file_fd.read() {
             Ok(v) => v,
-            Err(e) => return (ctx, format!("Cannot open file: {}", file_path)),
+            Err(e) => {
+                return_str += &format!("Cannot read file: '{}'\n", path);
+                continue;
+            },
         };
 
         let lines = file_vec.split(|&c| c == b'\n');
@@ -58,7 +84,7 @@ pub fn cat(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
             output_vec.extend(line);
             output_vec.push(b'\n');
         }
-        file_str = String::from_utf8_lossy(&output_vec).into_owned();
+        return_str += &String::from_utf8_lossy(&output_vec).into_owned();
     }
-    (ctx, file_str)
+    (ctx, return_str)
 }

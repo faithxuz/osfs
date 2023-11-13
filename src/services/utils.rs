@@ -26,6 +26,11 @@ pub fn convert_path_to_abs(wd: &str, path: &str) -> Result<String, & 'static str
     }
 
     let a = wd_vec.join("/");
-    let b = path_vec.join("/");
+    let mut b = path_vec.join("/");
+
+    if b.ends_with('/') {
+        b.pop();
+    }
+
     return Ok(String::from(a + "/" + &b));
 }
