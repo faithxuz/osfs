@@ -1,7 +1,7 @@
 use crate::sedes::{Serialize, Deserialize, SedesError};
 use super::utils;
 
-pub const BITMAP_SIZE: usize = 64;
+pub const BITMAP_SIZE: usize = 128;
 
 // ====== ERROR ======
 
