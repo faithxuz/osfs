@@ -2,7 +2,7 @@ use crate::sedes::{Serialize, Deserialize, SedesError};
 use super::utils;
 use super::{disk, data, inode};
 
-const SUPERBLOCK_SIZE: usize = 29;
+const SUPERBLOCK_SIZE: usize = 30;
 
 // ====== ERROR ======
 
@@ -12,7 +12,7 @@ use std::{error, fmt};
 pub enum SuperblockError {
     ReadErr,
     NotInitialized,
-    DeserializeErr(& 'static str),
+    DeserializeErr(SedesError),
 }
 
 impl error::Error for SuperblockError {}
@@ -23,20 +23,24 @@ impl fmt::Display for SuperblockError {
     }
 }
 
+impl From<SedesError> for SuperblockError {
+    fn from(e: SedesError) -> Self { Self::DeserializeErr(e) }
+}
+
 type Result<T> = std::result::Result<T, SuperblockError>;
 
 // ====== SUPERBLOCK ======
 
 pub struct Superblock {
-                                // 1
-    inode_count: u32,           // 4
-    inode_bitmap_offset: u32,   // 4
-    data_bitmap_offset: u32,    // 4
-    block_size: u32,            // 4
-    inode_offset: u32,          // 4
-    data_offset: u32,           // 4
-    max_file_size: u32,         // 4
-    magic: u8                   // 1
+                                    // 1
+    pub inode_count: u32,           // 4
+    pub inode_bitmap_offset: u32,   // 4
+    pub data_bitmap_offset: u32,    // 4
+    pub block_size: u32,            // 4
+    pub inode_offset: u32,          // 4
+    pub data_offset: u32,           // 4
+    pub max_file_size: u32,         // 4
+    pub magic: u8                   // 1
 }
 
 impl Superblock {
@@ -87,4 +91,20 @@ impl Deserialize for Superblock {
         me.magic = u8::from_be(bytes[29]);
         Ok(me)
     }
+}
+
+// ====== FN ======
+
+pub fn superblock() -> Result<Superblock> {
+    let mut buf = match disk::read_blocks(&[0].to_vec()) {
+        Ok(b) => b,
+        Err(e) => return Err(SuperblockError::ReadErr)
+    };
+    if *(match buf.get(0) {
+        Some(b) => b,
+        None => return Err(SuperblockError::ReadErr)
+    }) != 227 {
+        return Err(SuperblockError::NotInitialized);
+    }
+    Ok(Superblock::deserialize(&mut buf)?)
 }

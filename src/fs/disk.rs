@@ -1,15 +1,3 @@
-use crate::logger;
-use crate::sedes::Serialize;
-use super::superblock;
-
-use std::fs::{self, File};
-use std::io::{self, Seek, SeekFrom, Write, Read};
-
-const DISK_PATH: & 'static str = "./the_disk";
-pub const DISK_SIZE: u32 = 128 * 1024 * 1024;
-pub const BLOCK_SIZE: u32 = 1024;
-const BLOCK_COUNT: u32 = DISK_SIZE / BLOCK_SIZE;
-
 // ====== ERROR ======
 
 use std::{error, fmt, result};
@@ -29,14 +17,24 @@ impl fmt::Display for DiskError {
 }
 
 impl From<io::Error> for DiskError {
-    fn from(e: io::Error) -> Self {
-        Self::IoErr(e)
-    }
+    fn from(e: io::Error) -> Self { Self::IoErr(e) }
 }
 
 type Result<T> = result::Result<T, DiskError>;
 
 // ====== FN ======
+
+use crate::logger;
+use crate::sedes::Serialize;
+use super::{superblock, inode, file};
+
+use std::fs::{self, File};
+use std::io::{self, Seek, SeekFrom, Write, Read};
+
+const DISK_PATH: & 'static str = "./the_disk";
+pub const DISK_SIZE: u32 = 128 * 1024 * 1024;
+pub const BLOCK_SIZE: u32 = 1024;
+const BLOCK_COUNT: u32 = DISK_SIZE / BLOCK_SIZE;
 
 pub fn init_disk() -> Result<()> {
     match fs::metadata(DISK_PATH) {
@@ -59,7 +57,7 @@ pub fn init_disk() -> Result<()> {
 
     let mut f = File::open(DISK_PATH)?;
     let mut buf = [0u8; 1];
-    f.read_exact(&mut buf);
+    f.read_exact(&mut buf)?;
     if buf[0] != 227 {
         logger::log("Incorrupted disk file. Remove original file.");
         fs::remove_file(DISK_PATH)?;
@@ -79,17 +77,16 @@ fn create_disk() -> Result<()> {
 
     // create superblock
     let buf = superblock::Superblock::new().serialize();
-    write_blocks(&[(0, buf)].to_vec());
+    write_blocks(&[(0, buf)].to_vec())?;
 
     // create dir: /
-    /*
-    unsafe {
-        let mut inode_bm = (*disk.get()) .write_inode_bitmap().set_false(0);
-    }
-    let mut root = inode::alloc_inode(disk.clone(), 0, false).unwrap(); // user0 as root user
-    root.update_blocks(0, &[0u32].to_vec());
-    root.save();
-    */
+    let (root_inode_addr, _) = match inode::alloc_inode(0, true) {
+        Ok(a) => a,
+        Err(e) => { todo!() }
+    };
+    if let Err(e) = file::write_file(root_inode_addr, &Vec::<u8>::new()) {
+        todo!()
+    };
 
     Ok(())
 }
