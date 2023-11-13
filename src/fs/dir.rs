@@ -66,7 +66,7 @@ impl Deserialize for Entry {
         me.inode = utils::u8arr_to_u32(&buf[0..4]);
         me.name = match String::from_utf8(buf[4..].to_vec()) {
             Ok(s) => s,
-            Err(e) => { todo!() }
+            Err(e) => todo!()
         };
         Ok(me)
     }
@@ -119,9 +119,9 @@ impl Dd {
         match rx.recv() {
             Ok(res) => match res {
                 Ok(data) => Ok(data),
-                Err(e) => { todo!() }
+                Err(e) => todo!()
             },
-            Err(e) => { todo!() }
+            Err(e) => todo!()
         }
     }
 
@@ -138,9 +138,9 @@ impl Dd {
         match rx.recv() {
             Ok(res) => match res {
                 Ok(_) => Ok(()),
-                Err(e) => { todo!() }
+                Err(e) => todo!()
             },
-            Err(e) => { todo!() }
+            Err(e) => todo!()
         }
     }
 
@@ -155,9 +155,9 @@ impl Dd {
         match rx.recv() {
             Ok(res) => match res {
                 Ok(_) => Ok(()),
-                Err(e) => { todo!() }
+                Err(e) => todo!()
             },
-            Err(e) => { todo!() }
+            Err(e) => todo!()
         }
     }
 }
@@ -188,14 +188,14 @@ pub fn open_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) ->
         Err(e) => match e {
             FsError::NotFound => return Err(DdError::NotFound),
             FsError::NotDirButFile => return Err(DdError::NotDir),
-            _ => { todo!() }
+            _ => todo!()
         }
     };
     let inode = match inode::load_inode(inode_addr) {
         Ok(i) => i,
         Err(e) => match e {
             inode::InodeError::InvalidAddr => return Err(DdError::NotFound),
-            _ => { todo!() }
+            _ => todo!()
         }
     };
     let metadata = Metadata::new(inode_addr, inode, tx.clone());
@@ -215,7 +215,7 @@ pub fn open_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) ->
                 todo!()
             }
         },
-        Err(e) => { todo!() }
+        Err(e) => todo!()
     }
 
     logger::log(&format!("Open directory: {path}"));
@@ -234,7 +234,7 @@ pub fn create_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str, 
         Err(e) => match e {
             DdError::NotFound => return Err(DdError::ParentNotFound),
             DdError::NotDir => return Err(DdError::ParentNotDir),
-            _ => { todo!() }
+            _ => todo!()
         }
     };
     if let Ok(_) = metadata(tx.clone(), path) {
@@ -243,12 +243,12 @@ pub fn create_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str, 
 
     let inode = match inode::alloc_inode(uid, true) {
         Ok(i) => i,
-        Err(e) => { todo!() }
+        Err(e) => todo!()
     };
     let metadata = Metadata::new(inode.0, inode.1, tx.clone());
 
     // add parent/new
-    if let Err(e) = dir_add_entry(parent_dd.inode, inode.0, &dir_name) {
+    if let Err(e) = dir_add_entry(parent_dd.inode_addr(), inode.0, &dir_name) {
         todo!()
     }
     // add new/.
@@ -260,6 +260,7 @@ pub fn create_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str, 
         todo!()
     }
 
+    // add into fd table
     let mut lock = match fd_table.lock() {
         Ok(l) => l,
         Err(poisoned) => {
@@ -289,7 +290,7 @@ pub fn remove_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) 
         Err(e) => match e {
             FsError::NotFound => return Err(DdError::NotFound),
             FsError::NotDirButFile => return Err(DdError::NotDir),
-            _ => { todo!() }
+            _ => todo!()
         }
     };
 
@@ -305,27 +306,27 @@ pub fn remove_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) 
         return Err(DdError::DirOccupied);
     }
 
-    let mut path_vec: Vec<&str> = path.split('/').collect();
+    let path_vec: Vec<&str> = path.split('/').collect();
     let parent_path = path_vec[..path_vec.len()-1].join("/");
     let mut parent_dd = match open_dir(tx.clone(), fd_table.clone(), &parent_path) {
         Ok(d) => d,
         Err(e) => match e {
             DdError::NotFound => return Err(DdError::ParentNotFound),
             DdError::NotDir => return Err(DdError::ParentNotDir),
-            _ => { todo!() }
+            _ => todo!()
         }
     };
     if let Err(e) = metadata(tx.clone(), path) {
         return Err(DdError::NotFound);
     }
 
+    // remove entry from parent directory
     if let Err(e) = parent_dd.remove_entry(inode_addr) {
         todo!()
     };
-    if let Err(e) = file::remove_file(fd_table.clone(), path) {
-        todo!()
-    };
-    if let Err(e) = inode::free_inode(inode_addr) {
+
+    // remove directory file
+    if let Err(e) = file::remove_file(tx.clone(), fd_table.clone(), path) {
         todo!()
     };
 
@@ -336,14 +337,14 @@ pub fn remove_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) 
 pub fn read_dir(dir_inode: u32) -> Result<Vec<Entry>> {
     let data = match file::read_file(dir_inode) {
         Ok(d) => d,
-        Err(e) => { todo!() }
+        Err(e) => todo!()
     };
     let size = data.len() / ENTRY_SIZE;
     let mut v = Vec::<Entry>::with_capacity(size);
     for i in 0..size {
         v.push(match Entry::deserialize(&mut data[i*ENTRY_SIZE..(i+1)*ENTRY_SIZE].to_vec()) {
             Ok(ent) => ent,
-            Err(e) => { todo!() }
+            Err(e) => todo!()
         });
     }
     logger::log(&format!("Read directory: [dir_inode_addr]{dir_inode}"));
@@ -353,7 +354,7 @@ pub fn read_dir(dir_inode: u32) -> Result<Vec<Entry>> {
 pub fn dir_add_entry(dir_inode: u32, entry_inode: u32, name: &str) -> Result<()> {
     let ents = match read_dir(dir_inode) {
         Ok(v) => v,
-        Err(e) => { todo!() }
+        Err(e) => todo!()
     };
     let ent = Entry { inode: entry_inode, name: String::from(name) };
     if ents.contains(&ent) {
@@ -361,7 +362,7 @@ pub fn dir_add_entry(dir_inode: u32, entry_inode: u32, name: &str) -> Result<()>
     }
     let mut data = match file::read_file(dir_inode) {
         Ok(d) => d,
-        Err(e) => { todo!() }
+        Err(e) => todo!()
     };
     data.append(&mut ent.serialize());
     if let Err(e) =  file::write_file(dir_inode, &data) {
@@ -378,11 +379,11 @@ pub fn dir_add_entry(dir_inode: u32, entry_inode: u32, name: &str) -> Result<()>
 pub fn dir_remove_entry(dir_inode: u32, entry_inode: u32) -> Result<()> {
     let mut v = match read_dir(dir_inode) {
         Ok(v) => v,
-        Err(e) => { todo!() }
+        Err(e) => todo!()
     };
     for (i, ent) in v.iter().enumerate() {
         if ent.inode == entry_inode {
-            v.drain(i..i+1);
+            v = v.drain(i..i+1).collect();
             let mut data = Vec::<u8>::with_capacity(v.len() * ENTRY_SIZE);
             for ent in v {
                 data.append(&mut ent.serialize());

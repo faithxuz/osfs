@@ -244,7 +244,7 @@ pub fn start_fs(
         return
     }
     let fd_table = Arc::new(Mutex::new(FdTable::new()));
-    logger::log("Create fd table");
+    logger::log("Created fd table");
 
     if let Err(e) = started.send(Ok(())) {
         logger::log(&format!("[ERR][FS] Failed to send start:ok. Msg: {e}"));
@@ -261,7 +261,7 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             },
             FsReq::Metadata(tx, path) => {
@@ -271,7 +271,7 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             },
             FsReq::OpenFile(tx, path) => {
@@ -281,7 +281,7 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             },
             FsReq::CreateFile(tx, path, uid) => {
@@ -291,17 +291,17 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             },
             FsReq::RemoveFile(tx, path) => {
-                match file::remove_file(fd_table.clone(), &path) {
+                match file::remove_file(self_tx.clone(), fd_table.clone(), &path) {
                     Ok(_) => {
                         if let Err(e) = tx.send(Ok(())) {
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             },
             FsReq::OpenDir(tx, path) => {
@@ -311,7 +311,7 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             },
             FsReq::CreateDir(tx, path, uid) => {
@@ -321,7 +321,7 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             },
             FsReq::RemoveDir(tx, path) => {
@@ -331,7 +331,7 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             },
             FsReq::UpdateInode(tx, addr, inode) => {
@@ -341,7 +341,7 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             }
             FsReq::ReadFile(tx, inode) => {
@@ -351,7 +351,7 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             },
             FsReq::WriteFile(tx, inode, data ) => {
@@ -361,7 +361,7 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             },
             FsReq::ReadDir(tx, inode) => {
@@ -371,7 +371,7 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             },
             FsReq::DirAddEntry(tx, dir_inode, entry_inode, name) => {
@@ -381,7 +381,7 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             },
             FsReq::DirRemoveEntry(tx, dir_inode, entry_inode) => {
@@ -391,7 +391,7 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => { todo!() }
+                    Err(e) => todo!()
                 }
             },
         }
@@ -404,14 +404,14 @@ fn path_to_inode(path: &str) -> Result<u32> {
     if path_vec.len() < 1 {
         return Err(FsError::InvalidPath);
     }
-    path_vec.drain(0..1);
+    path_vec = path_vec.drain(0..1).collect();
 
     let mut inode = 0;
     let mut path = String::from("/");
     for section in path_vec {
         let dir_now = match dir::read_dir(inode) {
             Ok(v) => v,
-            Err(e) => { todo!() }
+            Err(e) => todo!()
         };
         for ent in dir_now {
             if ent.name == section {

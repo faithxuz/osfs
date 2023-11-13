@@ -35,7 +35,7 @@ fn get_bitmap() -> Result<Bitmap> {
     let addrs: Vec<u32> = (BITMAP_OFFSET..DATA_OFFSET).collect();
     let mut data = match disk::read_blocks(&addrs) {
         Ok(d) => d,
-        Err(e) => { todo!() }
+        Err(e) => todo!()
     };
     Ok(Bitmap::deserialize(&mut data).unwrap())
 }
@@ -51,7 +51,7 @@ fn save_bitmap(bitmap: &Bitmap) -> Result<()> {
     }
     match disk::write_blocks(&data) {
         Ok(_) => Ok(()),
-        Err(e) => { todo!() }
+        Err(e) => todo!()
     }
 }
 

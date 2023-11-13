@@ -135,7 +135,7 @@ impl Copy for Inode {}
 
 // ====== FN ======
 
-use super::disk;
+use super::{disk, data};
 use super::bitmap::BlockBitmap;
 
 type Bitmap = BlockBitmap;
@@ -182,17 +182,22 @@ pub fn alloc_inode(owner: u8, is_dir: bool) -> Result<(u32, Inode)> {
 /// - DiskErr
 pub fn free_inode(addr: u32) -> Result<()> {
     let mut bitmap = get_bitmap()?;
-    match bitmap.set_false(addr) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(InodeError::InvalidAddr)
+    if let Err(e) = bitmap.set_false(addr) {
+        return Err(InodeError::InvalidAddr);
     }
+    save_bitmap(&bitmap)?;
+    Ok(())
 }
 
 /// ## Error
 /// 
+/// - Invalid Addr
 /// - DiskErr
 /// - SedesErr
 pub fn load_inode(addr: u32) -> Result<Inode> {
+    if addr > INODE_COUNT {
+        return Err(InodeError::InvalidAddr);
+    }
     let block = INODE_OFFSET + addr / INODE_PER_BLOCK;
     let pos = addr % INODE_PER_BLOCK * INODE_SIZE as u32;
     let buf = disk::read_blocks(&vec![block])?;
@@ -215,5 +220,172 @@ pub fn save_inode(addr: u32, inode: &Inode) -> Result<()> {
         inode.serialize()
     ).collect();
     disk::write_blocks(&vec![(INODE_OFFSET, buf.to_vec())])?;
+    Ok(())
+}
+
+/// ## Error
+/// 
+/// - DiskErr
+pub fn get_blocks(inode: &Inode) -> Result<Vec<u32>> {
+    let mut v = Vec::<u32>::new();
+    for addr in inode.blocks {
+        if addr == 0 {
+            return Ok(v)
+        }
+        v.push(addr);
+    }
+
+    // read indirect block
+    match read_ind_block(inode.indirect_block) {
+        Ok(mut u) => {
+            v.append(&mut u.1);
+            if u.0 {
+                return Ok(v)
+            }
+        },
+        Err(e) => return Err(e)
+    }
+    
+    // read double indirect blocks
+    match read_ind_block(inode.indirect_block) {
+        Ok(u) => {
+            for db in u.1 {
+                if db == 0 {
+                    return Ok(v)
+                }
+                match read_ind_block(db) {
+                    Ok(mut u) => {
+                        v.append(&mut u.1);
+                        if u.0 {
+                            return Ok(v)
+                        }
+                    },
+                    Err(e) => return Err(e)
+                }
+            }
+        },
+        Err(e) => return Err(e)
+    }
+
+    Ok(v)
+}
+
+fn read_ind_block(addr: u32) -> Result<(bool, Vec<u32>)> {
+    let buf = disk::read_blocks(&[addr].to_vec())?;
+    const ADDR_COUNT: usize = disk::BLOCK_SIZE as usize / 4;
+    let mut v = Vec::<u32>::with_capacity(ADDR_COUNT);
+    for i in 0..ADDR_COUNT {
+        let addr = utils::u8arr_to_u32(&buf[i*4..(i+1)*4]);
+        if addr == 0 {
+            return Ok((true, v))
+        }
+        v.push(addr);
+    }
+    Ok((false, v))
+}
+
+/// ## Error
+/// 
+/// - DataTooBig
+/// - DiskErr
+pub fn update_blocks(inode: &mut Inode, blocks: &Vec<u32>) -> Result<()> {
+    if blocks.len() > MAX_BLOCKS as usize {
+        return Err(InodeError::DataTooBig);
+    }
+    let mut it = blocks.iter();
+    for i in 0..8 {
+        let block = match it.next() {
+            Some(b) => *b,
+            None => return Ok(())
+        };
+        if block == 0 {
+            return Ok(())
+        }
+        inode.blocks[i] = block;
+    }
+
+    // set indirect block
+    if inode.indirect_block == 0 {
+        inode.indirect_block = match data::alloc_blocks(1) {
+            Ok(v) => *v.get(0).unwrap(),
+            Err(e) => return Err(InodeError::DataTooBig)
+        };
+    }
+    let mut buf = Vec::<u8>::with_capacity(disk::BLOCK_SIZE as usize);
+    for _ in 0..INODE_PER_BLOCK {
+        let block = match it.next() {
+            Some(b) => *b,
+            None => {
+                disk::write_blocks(&[(inode.indirect_block, buf)].to_vec())?;
+                return Ok(())
+            }
+        };
+        if block == 0 {
+            disk::write_blocks(&[(inode.indirect_block, buf)].to_vec())?;
+            return Ok(())
+        }
+        buf.append(&mut utils::u32_to_u8arr(block).to_vec());
+    }
+    disk::write_blocks(&[(inode.indirect_block, buf)].to_vec())?;
+
+    // set double indirect block
+    if inode.double_block == 0 {
+        inode.double_block = match data::alloc_blocks(1) {
+            Ok(v) => *v.get(0).unwrap(),
+            Err(e) => return Err(InodeError::DataTooBig)
+        };
+    }
+    let buf = &disk::read_blocks(&[inode.double_block].to_vec())?;
+    let addr_count = disk::BLOCK_SIZE as usize / 4;
+    let mut double = Vec::<u32>::with_capacity(addr_count);
+    for i in 0..addr_count {
+        double.push(utils::u8arr_to_u32(&buf[i*4..(i+1)*4]));
+    }
+
+    let mut block_buf = Vec::<(u32, Vec<u8>)>::new();
+    for i in 0..addr_count {
+        let ind_block = double.get_mut(i).unwrap();
+        if *ind_block == 0 {
+            *ind_block = match data::alloc_blocks(1) {
+                Ok(v) => *v.get(0).unwrap(),
+                Err(e) => return Err(InodeError::DataTooBig)
+            };
+        }
+        let mut buf = Vec::<u8>::with_capacity(disk::BLOCK_SIZE as usize);
+        for _ in 0..INODE_PER_BLOCK {
+            let block = match it.next() {
+                Some(b) => *b,
+                None => {
+                    block_buf.push((*ind_block, buf));
+                    let mut double_buf = Vec::<u8>::with_capacity(addr_count);
+                    for addr in double {
+                        double_buf.append(&mut utils::u32_to_u8arr(addr).to_vec());
+                    }
+                    block_buf.push((inode.double_block, double_buf));
+                    disk::write_blocks(&block_buf)?;
+                    return Ok(())
+                }
+            };
+            if block == 0 {
+                block_buf.push((*ind_block, buf));
+                let mut double_buf = Vec::<u8>::with_capacity(addr_count);
+                for addr in double {
+                    double_buf.append(&mut utils::u32_to_u8arr(addr).to_vec());
+                }
+                block_buf.push((inode.double_block, double_buf));
+                disk::write_blocks(&block_buf)?;
+                return Ok(())
+            }
+            buf.append(&mut utils::u32_to_u8arr(block).to_vec());
+        }
+        block_buf.push((*ind_block, buf));
+    }
+
+    let mut double_buf = Vec::<u8>::with_capacity(addr_count);
+    for addr in double {
+        double_buf.append(&mut utils::u32_to_u8arr(addr).to_vec());
+    }
+    block_buf.push((inode.double_block, double_buf));
+    disk::write_blocks(&block_buf)?;
     Ok(())
 }

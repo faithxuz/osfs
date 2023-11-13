@@ -128,9 +128,7 @@ impl Metadata {
         }
 
         let (tx, rx) = mpsc::channel();
-        if let Err(e) = self.tx.send(FsReq::UpdateInode(tx, self.addr, self.inode)) {
-            todo!()
-        }
+        self.tx.send(FsReq::UpdateInode(tx, self.addr, self.inode)).unwrap();
         match rx.recv()? {
             Ok(_) => {
                 logger::log(&format!("Update permission for inode {}.", self.addr));
@@ -144,10 +142,7 @@ impl Metadata {
     /// 
     /// Note: month starts from 0
     pub fn timestamp(&self) -> (u32, u32, u32, u32) {
-        let dt = match DateTime::from_timestamp(self.inode.timestamp as i64, 0) {
-            Some(dt) => dt,
-            None => { todo!() }
-        };
+        let dt = DateTime::from_timestamp(self.inode.timestamp as i64, 0).unwrap();
         (dt.month0(), dt.day(), dt.hour(), dt.minute())
     }
 
@@ -156,9 +151,7 @@ impl Metadata {
         self.inode.update_timestamp();
 
         let (tx, rx) = mpsc::channel();
-        if let Err(e) = self.tx.send(FsReq::UpdateInode(tx, self.addr, self.inode)) {
-            todo!()
-        }
+        self.tx.send(FsReq::UpdateInode(tx, self.addr, self.inode)).unwrap();
         match rx.recv()? {
             Ok(_) => {
                 logger::log(&format!("Update timestamp for inode {}.", self.addr));
@@ -179,14 +172,14 @@ pub fn metadata(tx: Sender<FsReq>, path: &str) -> Result<Metadata> {
         Ok(i) => i,
         Err(e) => match e {
             FsError::NotFound => return Err(MetadataError::NotFound),
-            _ => { todo!() }
+            _ => todo!()
         }
     };
     let inode = match inode::load_inode(inode_addr) {
         Ok(i) => i,
         Err(e) => match e {
             inode::InodeError::InvalidAddr => return Err(MetadataError::NotFound),
-            _ => { todo!() }
+            _ => todo!()
         }
     };
 

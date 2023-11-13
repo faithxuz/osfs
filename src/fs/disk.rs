@@ -59,7 +59,7 @@ pub fn init_disk() -> Result<()> {
     let mut buf = [0u8; 1];
     f.read_exact(&mut buf)?;
     if buf[0] != 227 {
-        logger::log("Incorrupted disk file. Remove original file.");
+        logger::log("Found incorrupted disk file. Remove original file.");
         fs::remove_file(DISK_PATH)?;
         create_disk()?;
     }
@@ -82,7 +82,7 @@ fn create_disk() -> Result<()> {
     // create dir: /
     let (root_inode_addr, _) = match inode::alloc_inode(0, true) {
         Ok(a) => a,
-        Err(e) => { todo!() }
+        Err(e) => todo!()
     };
     if let Err(e) = file::write_file(root_inode_addr, &Vec::<u8>::new()) {
         todo!()
