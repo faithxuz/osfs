@@ -17,9 +17,7 @@ impl fmt::Display for DiskError {
 }
 
 impl From<io::Error> for DiskError {
-    fn from(e: io::Error) -> Self {
-        Self::IoErr(e)
-    }
+    fn from(e: io::Error) -> Self { Self::IoErr(e) }
 }
 
 type Result<T> = result::Result<T, DiskError>;

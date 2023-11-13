@@ -24,9 +24,7 @@ impl fmt::Display for SuperblockError {
 }
 
 impl From<SedesError> for SuperblockError {
-    fn from(e: SedesError) -> Self {
-        Self::DeserializeErr(e)
-    }
+    fn from(e: SedesError) -> Self { Self::DeserializeErr(e) }
 }
 
 type Result<T> = std::result::Result<T, SuperblockError>;

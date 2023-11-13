@@ -21,9 +21,13 @@ use std::sync::mpsc::RecvError;
 
 #[derive(Debug)]
 pub enum FsError {
+    InvalidPath,
     NotFound,
     NotFileButDir,
     NotDirButFile,
+    MetadataErr(MetadataError),
+    FileErr(FdError),
+    DirErr(DdError),
     RecvErr(RecvError),
 }
 
@@ -35,10 +39,20 @@ impl fmt::Display for FsError {
     }
 }
 
+impl From<MetadataError> for FsError {
+    fn from(e: MetadataError) -> Self { Self::MetadataErr(e) }
+}
+
+impl From<FdError> for FsError {
+    fn from(e: FdError) -> Self { Self::FileErr(e) }
+}
+
+impl From<DdError> for FsError {
+    fn from(e: DdError) -> Self { Self::DirErr(e) }
+}
+
 impl From<RecvError> for FsError {
-    fn from(e: RecvError) -> Self {
-        Self::RecvErr(e)
-    }
+    fn from(e: RecvError) -> Self { Self::RecvErr(e) }
 }
 
 type Result<T> = result::Result<T, FsError>;
@@ -97,7 +111,16 @@ pub enum FsReq {
     /// `path`: file path
     RemoveDir(Sender<Result<()>>, String),
 
-    // Fd and Dd request
+    // Metadata request
+
+    /// `tx`: send back result
+    /// 
+    /// `addr`: virtual address of inode
+    /// 
+    /// `inode`: the inode to write
+    UpdateInode(Sender<Result<()>>, u32, inode::Inode),
+
+    // Fd request
 
     /// `tx`: send back result
     /// 
@@ -110,6 +133,8 @@ pub enum FsReq {
     /// 
     /// `data`: write content as u8 vector
     WriteFile(Sender<Result<()>>, u32, Vec<u8>),
+
+    // Dd request
 
     /// `tx`: send back result
     /// 
@@ -139,78 +164,70 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
 #[derive(Debug)]
+pub struct FdTableEntry {
+    pub count: u32,
+    pub is_dir: bool,
+}
+
+#[derive(Debug)]
 pub struct FdTable {
-    data: HashMap<u32, (u32, bool, Arc<Mutex<inode::Inode>>)>,
+    data: HashMap<u32, FdTableEntry>,
 }
 
 impl FdTable {
     pub fn new() -> Self {
-        Self { data: HashMap::<u32, (u32, bool, Arc<Mutex<inode::Inode>>)>::new() }
+        Self { data: HashMap::<u32, FdTableEntry>::new() }
     }
 
     pub fn try_drop(&mut self, inode: u32) {
         if let Some(e) = self.data.get(&inode) {
-            if e.0 == 1 {
+            if e.count == 1 {
                 let _ = self.data.remove(&inode);
             }
         }
     }
 
-    pub fn add_file(&mut self, inode_addr: u32, inode: Arc<Mutex<inode::Inode>>) -> Result<Arc<Mutex<inode::Inode>>> {
-        let ic = inode.clone();
-        let lock = match inode.lock() {
-            Ok(l) => l,
-            Err(poisoned) => {
-                let l = poisoned.into_inner();
-                logger::log(&format!("Recovered from poisoned: {l:?}"));
-                l
-            }
-        };
-        if lock.mode & inode::DIR_FLAG > 0 {
+    pub fn add_file(&mut self, inode_addr: u32, inode: &inode::Inode) -> Result<()> {
+        if inode.mode & inode::DIR_FLAG > 0 {
             return Err(FsError::NotFileButDir)
         }
-        self.data.insert(inode_addr, (0, false, ic.clone()));
-        Ok(ic)
+        self.data.insert(inode_addr, FdTableEntry {
+            count: 0, is_dir: false
+        });
+        Ok(())
     }
 
-    pub fn add_dir(&mut self, inode_addr: u32, inode: Arc<Mutex<inode::Inode>>) -> Result<Arc<Mutex<inode::Inode>>> {
-        let ic = inode.clone();
-        let lock = match inode.lock() {
-            Ok(l) => l,
-            Err(poisoned) => {
-                let l = poisoned.into_inner();
-                logger::log(&format!("Recovered from poisoned: {l:?}"));
-                l
-            }
-        };
-        if lock.mode & inode::DIR_FLAG == 0 {
+    pub fn add_dir(&mut self, inode_addr: u32, inode: &inode::Inode) -> Result<()> {
+        if inode.mode & inode::DIR_FLAG == 0 {
             return Err(FsError::NotDirButFile)
         }
-        self.data.insert(inode_addr, (0, true, ic.clone()));
-        Ok(ic)
+        self.data.insert(inode_addr, FdTableEntry{
+            count: 0, is_dir: true
+        });
+        Ok(())
     }
 
-    pub fn get_file(&mut self, inode: u32) -> Result<Option<Arc<Mutex<inode::Inode>>>> {
+    pub fn get_file(&mut self, inode: u32) -> Result<Option<()>> {
         match self.data.get_mut(&inode) {
-            Some(e) => {
-                if (*e).1 {
+            Some(ent) => {
+                if ent.is_dir {
                     return Err(FsError::NotFileButDir);
                 }
-                (*e).0 += 1;
-                Ok(Some((*e).2.clone()))
+                ent.count += 1;
+                Ok(Some(()))
             },
             None => Ok(None)
         }
     }
 
-    pub fn get_dir(&mut self, inode: u32) -> Result<Option<Arc<Mutex<inode::Inode>>>> {
+    pub fn get_dir(&mut self, inode: u32) -> Result<Option<()>> {
         match self.data.get_mut(&inode) {
-            Some(e) => {
-                if !(*e).1 {
+            Some(ent) => {
+                if !ent.is_dir {
                     return Err(FsError::NotFileButDir);
                 }
-                (*e).0 += 1;
-                Ok(Some((*e).2.clone()))
+                ent.count += 1;
+                Ok(Some(()))
             },
             None => Ok(None)
         }
@@ -332,6 +349,16 @@ pub fn start_fs(
                     Err(e) => { todo!() }
                 }
             },
+            FsReq::UpdateInode(tx, addr, inode) => {
+                match inode::save_inode(addr, &inode) {
+                    Ok(_) => {
+                        if let Err(e) = tx.send(Ok(())) {
+                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                        };
+                    },
+                    Err(e) => { todo!() }
+                }
+            }
             FsReq::ReadFile(tx, inode) => {
                 match file::read_file(inode) {
                     Ok(v) => {
@@ -389,6 +416,9 @@ pub fn start_fs(
 fn path_to_inode(path: &str) -> Result<u32> {
     // assume path is absolute
     let mut path_vec: Vec<&str> = path.split('/').collect();
+    if path_vec.len() < 1 {
+        return Err(FsError::InvalidPath);
+    }
     path_vec.drain(0..1);
 
     let mut inode = 0;
