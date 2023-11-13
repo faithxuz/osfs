@@ -1,5 +1,6 @@
 // ====== ERROR ====== 
 
+use crate::sedes;
 use std::{error, fmt};
 
 #[derive(Debug)]
@@ -7,6 +8,7 @@ pub enum InodeError {
     NoUsableBlock,
     InvalidAddr,
     DataTooBig,
+    SedesErr(sedes::SedesError),
     DiskErr(disk::DiskError),
     SystemTimeErr(std::time::SystemTimeError),
 }
@@ -19,16 +21,16 @@ impl fmt::Display for InodeError {
     }
 }
 
+impl From<sedes::SedesError> for InodeError {
+    fn from(e: sedes::SedesError) -> Self { Self::SedesErr(e) }
+}
+
 impl From<disk::DiskError> for InodeError {
-    fn from(e: disk::DiskError) -> Self {
-        Self::DiskErr(e)
-    }
+    fn from(e: disk::DiskError) -> Self { Self::DiskErr(e) }
 }
 
 impl From<std::time::SystemTimeError> for InodeError {
-    fn from(e: std::time::SystemTimeError) -> Self {
-        Self::SystemTimeErr(e)
-    }
+    fn from(e: std::time::SystemTimeError) -> Self { Self::SystemTimeErr(e) }
 }
 
 type Result<T> = std::result::Result<T, InodeError>;
@@ -37,6 +39,7 @@ type Result<T> = std::result::Result<T, InodeError>;
 
 use super::utils;
 use crate::sedes::{Serialize, Deserialize, SedesError};
+use chrono::prelude::*;
 
 pub const BITMAP_OFFSET: u32 = 1;
 pub const INODE_OFFSET: u32 = BITMAP_OFFSET + 1;
@@ -66,6 +69,21 @@ pub struct Inode {
     // acquire 14 to 64
 }
 
+impl Inode {
+    pub fn new(owner: u8, is_dir: bool) -> Self {
+        let mut inode = Self::default();
+        inode.uid = owner;
+        inode.update_timestamp();
+        inode
+    }
+
+    /// Update to now
+    pub fn update_timestamp(&mut self) {
+        let dt = Local::now();
+        self.timestamp = dt.timestamp() as u32;
+    }
+}
+
 impl Serialize for Inode {
     fn serialize(&self) -> Vec<u8> {
         let mut v = Vec::<u8>::with_capacity(64);
@@ -87,7 +105,7 @@ impl Deserialize for Inode {
         if buf.len() < INODE_SIZE {
             return Err(SedesError::DeserialBufferTooSmall);
         }
-        let bytes = buf.as_slice();
+        let bytes = &buf[..];
         let mut me = Self::default();
         me.uid = u8::from_be(bytes[0]);
         me.mode = u8::from_be(bytes[1]);
@@ -102,6 +120,19 @@ impl Deserialize for Inode {
     }
 }
 
+impl Clone for Inode {
+    fn clone(&self) -> Self {
+        Self {
+            uid: self.uid, mode: self.mode, size: self.size,
+            timestamp: self.timestamp, blocks: self.blocks.clone(),
+            indirect_block: self.indirect_block,
+            double_block: self.double_block
+        }
+    }
+}
+
+impl Copy for Inode {}
+
 // ====== FN ======
 
 use super::disk;
@@ -112,7 +143,7 @@ type Bitmap = BlockBitmap;
 fn get_bitmap() -> Result<Bitmap> {
     let addrs: Vec<u32> = vec![BITMAP_OFFSET];
     let mut data = disk::read_blocks(&addrs)?;
-    Ok(Bitmap::deserialize(&mut data).unwrap())
+    Ok(Bitmap::deserialize(&mut data)?)
 }
 
 fn save_bitmap(bitmap: &Bitmap) -> Result<()> {
@@ -120,20 +151,35 @@ fn save_bitmap(bitmap: &Bitmap) -> Result<()> {
     Ok(disk::write_blocks(&data)?)
 }
 
-pub fn alloc_inode(owner: u8, is_dir: bool) -> Result<Inode> {
+/// ## Error
+/// 
+/// - NoUsableBlock
+/// - DiskErr
+pub fn alloc_inode(owner: u8, is_dir: bool) -> Result<(u32, Inode)> {
     let mut bitmap = get_bitmap()?;
-    bitmap.set_true(match bitmap.next_usable() {
+    let addr = match bitmap.next_usable() {
         Some(p) => p,
         None => return Err(InodeError::NoUsableBlock)
-    }).unwrap();
+    };
+    bitmap.set_true(addr).unwrap();
     let mut inode = Inode::default();
     inode.uid = owner;
-    inode.mode = if is_dir { DIR_FLAG } else { 0 }
-        + OWNER_RWX_FLAG.0 + OWNER_RWX_FLAG.1 + OTHER_RWX_FLAG.0;
+    if is_dir {
+        inode.mode = DIR_FLAG
+            + OWNER_RWX_FLAG.0 + OWNER_RWX_FLAG.1 + OWNER_RWX_FLAG.2
+            + OTHER_RWX_FLAG.0 + OTHER_RWX_FLAG.2;
+    } else {
+        inode.mode = OWNER_RWX_FLAG.0 + OWNER_RWX_FLAG.1 + OTHER_RWX_FLAG.0;
+    }
     save_bitmap(&bitmap)?;
-    Ok(inode)
+    Ok((addr, inode))
 }
 
+/// ## Error
+/// 
+/// - InvalidAddr
+/// - SedesErr
+/// - DiskErr
 pub fn free_inode(addr: u32) -> Result<()> {
     let mut bitmap = get_bitmap()?;
     match bitmap.set_false(addr) {
@@ -142,20 +188,24 @@ pub fn free_inode(addr: u32) -> Result<()> {
     }
 }
 
+/// ## Error
+/// 
+/// - DiskErr
+/// - SedesErr
 pub fn load_inode(addr: u32) -> Result<Inode> {
     let block = INODE_OFFSET + addr / INODE_PER_BLOCK;
     let pos = addr % INODE_PER_BLOCK * INODE_SIZE as u32;
     let buf = disk::read_blocks(&vec![block])?;
-    Ok(match Inode::deserialize(&mut buf[
+    Ok(Inode::deserialize(&mut buf[
         pos as usize * INODE_SIZE
         ..(pos + 1) as usize * INODE_SIZE
-    ].to_vec()) {
-        Ok(i) => i,
-        Err(e) => { todo!() }
-    })
+    ].to_vec())?)
 
 }
 
+/// ## Error
+/// 
+/// - DiskErr
 pub fn save_inode(addr: u32, inode: &Inode) -> Result<()> {
     let block = INODE_OFFSET + addr / INODE_PER_BLOCK;
     let pos = addr % INODE_PER_BLOCK * INODE_SIZE as u32;

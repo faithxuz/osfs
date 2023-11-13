@@ -12,3 +12,4 @@ license = "MIT"
 [dependencies]
 time = { version = "0.3", features = ["macros", "local-offset"] }
 threadpool = "1.8"
+chrono = "0.4"
