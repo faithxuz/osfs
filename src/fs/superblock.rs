@@ -1,3 +1,5 @@
+use serde::de;
+
 use crate::sedes::{Serialize, Deserialize, SedesError};
 use super::utils;
 use super::{disk, data, inode};
@@ -31,6 +33,7 @@ type Result<T> = std::result::Result<T, SuperblockError>;
 
 // ====== SUPERBLOCK ======
 
+#[derive(Debug)]
 pub struct Superblock {
                                     // 1
     pub inode_count: u32,           // 4
@@ -95,6 +98,10 @@ impl Deserialize for Superblock {
 
 // ====== FN ======
 
+/// ## Error
+/// 
+/// - ReadErr
+/// - NotInitialized
 pub fn superblock() -> Result<Superblock> {
     let mut buf = match disk::read_blocks(&[0].to_vec()) {
         Ok(b) => b,

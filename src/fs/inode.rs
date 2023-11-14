@@ -140,17 +140,20 @@ use super::bitmap::BlockBitmap;
 
 type Bitmap = BlockBitmap;
 
+// [PASS]
 fn get_bitmap() -> Result<Bitmap> {
     let addrs: Vec<u32> = vec![BITMAP_OFFSET];
     let mut data = disk::read_blocks(&addrs)?;
     Ok(Bitmap::deserialize(&mut data)?)
 }
 
+// [PASS]
 fn save_bitmap(bitmap: &Bitmap) -> Result<()> {
     let data = vec![(BITMAP_OFFSET, bitmap.serialize())];
     Ok(disk::write_blocks(&data)?)
 }
 
+// [PASS]
 /// ## Error
 /// 
 /// - NoUsableBlock
@@ -171,6 +174,7 @@ pub fn alloc_inode(owner: u8, is_dir: bool) -> Result<(u32, Inode)> {
     } else {
         inode.mode = OWNER_RWX_FLAG.0 + OWNER_RWX_FLAG.1 + OTHER_RWX_FLAG.0;
     }
+    inode.update_timestamp();
     save_bitmap(&bitmap)?;
     Ok((addr, inode))
 }
@@ -189,6 +193,7 @@ pub fn free_inode(addr: u32) -> Result<()> {
     Ok(())
 }
 
+// [PASS]
 /// ## Error
 /// 
 /// - Invalid Addr
@@ -208,6 +213,7 @@ pub fn load_inode(addr: u32) -> Result<Inode> {
 
 }
 
+// [PASS]
 /// ## Error
 /// 
 /// - DiskErr
@@ -215,10 +221,10 @@ pub fn save_inode(addr: u32, inode: &Inode) -> Result<()> {
     let block = INODE_OFFSET + addr / INODE_PER_BLOCK;
     let pos = addr % INODE_PER_BLOCK * INODE_SIZE as u32;
     let mut buf = disk::read_blocks(&vec![block])?;
-    let buf: Vec<_> = buf.splice(
+    buf.splice(
         pos as usize * INODE_SIZE..(pos + 1) as usize * INODE_SIZE,
         inode.serialize()
-    ).collect();
+    );
     disk::write_blocks(&vec![(INODE_OFFSET, buf.to_vec())])?;
     Ok(())
 }

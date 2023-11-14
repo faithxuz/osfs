@@ -3,6 +3,7 @@ const BITMAP_BLOCK: u32 = 16;
 pub const BITMAP_OFFSET: u32 = 1 + 1 + 256;
 pub const DATA_OFFSET: u32 = BITMAP_OFFSET + BITMAP_BLOCK;
 const MAX_DATA_BLOCK: u32 = 128 * 1024 - DATA_OFFSET;
+const ADDR_OFFSET: u32 = DATA_OFFSET * disk::BLOCK_SIZE;
 
 // ====== ERROR ======
 
@@ -66,7 +67,7 @@ pub fn alloc_blocks(count: u32) -> Result<Vec<u32>> {
         if let Err(e) = bitmap.set_true(addr) {
             return Err(DataError::InvalidAddr)
         };
-        v.push(addr);
+        v.push(addr + ADDR_OFFSET);
     }
     save_bitmap(&bitmap)?;
     Ok(v)
@@ -75,7 +76,7 @@ pub fn alloc_blocks(count: u32) -> Result<Vec<u32>> {
 pub fn free_blocks(addrs: &Vec<u32>) -> Result<()> {
     let mut bitmap = get_bitmap()?;
     for addr in addrs {
-        if let Err(e) = bitmap.set_false(*addr) {
+        if let Err(e) = bitmap.set_false(*addr - ADDR_OFFSET) {
             return Err(DataError::InvalidAddr)
         };
     }

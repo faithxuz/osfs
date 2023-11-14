@@ -318,7 +318,7 @@ pub fn read_file(inode: u32) -> Result<Vec<u8>> {
 }
 
 pub fn write_file(inode_addr: u32, buf: &Vec<u8>) -> Result<()> {
-    let blocks_len = buf.len() / disk::BLOCK_SIZE as usize;
+    let blocks_len = buf.len().div_ceil(disk::BLOCK_SIZE as usize);
     let mut inode = match inode::load_inode(inode_addr) {
         Ok(i) => i,
         Err(e) => todo!()
@@ -356,14 +356,20 @@ pub fn write_file(inode_addr: u32, buf: &Vec<u8>) -> Result<()> {
         todo!()
     }
 
+    if blocks_len == 0 {
+        return Ok(());
+    }
+
     let buf = &buf[..];
     let mut data = Vec::<(u32, Vec<u8>)>::with_capacity(blocks_len);
+    let last_block = blocks.pop().unwrap();
     for (i, addr) in blocks.iter().enumerate() {
         data.push((*addr, buf[i*disk::BLOCK_SIZE as usize..(i+1)*disk::BLOCK_SIZE as usize].to_vec()));
     }
+    data.push((last_block, buf[(blocks_len-1)*disk::BLOCK_SIZE as usize..].to_vec()));
     if let Err(e) = disk::write_blocks(&data) {
         todo!()
     }
 
-    todo!()
+    Ok(())
 }

@@ -1,3 +1,5 @@
+// [PASS]
+
 use crate::sedes::{Serialize, Deserialize, SedesError};
 use super::utils;
 
@@ -56,7 +58,7 @@ impl BlockBitmap {
         for i in 0..BITMAP_SIZE {
             let mut flag = 1;
             for j in 0..64 {
-                if self.data[i] & flag > 0 {
+                if self.data[i] & flag == 0 {
                     return Some((i*64 + j) as u32);
                 }
                 flag = flag << 1;
@@ -68,7 +70,7 @@ impl BlockBitmap {
     pub fn rest_usable(&self) -> u32 {
         let mut result = 0;
         for m in self.data {
-            result += utils::count_ones_in_u64(m);
+            result += 64 - utils::count_ones_in_u64(m);
         }
         result
     }
