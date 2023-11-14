@@ -17,7 +17,9 @@ use crate::fs::{metadata, create_dir, create_file};
 const USAGE: &str = "Usage: touch <name1> <name2> ...";
 const PERMISSION: (bool, bool, bool) = (false, true, false);
 
+// split parent path and sub path
 fn split_path(path: &str) -> (&str, &str) {
+    // split at the last '/' or '\'
     if let Some(index) = path.rfind('/') {
         let (parent_path, sub_path) = path.split_at(index);
         (&parent_path[..index], &sub_path[1..])
@@ -34,8 +36,10 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         return (ctx, String::from(USAGE));
     }
 
+    // define params: none
     let opts = Options::new();
 
+    // parse args
     let matches = match opts.parse(&args) {
         Ok(m) => m,
         Err(f) => {
@@ -48,6 +52,8 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     }
 
     let mut return_str = String::new();
+
+    // iterate path in paths
     for path in &matches.free {
         let new_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
             Ok(p) => p,
@@ -57,6 +63,7 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
             }
         };
 
+        // update timestamp
         if let Ok(mut m) = metadata(&mut ctx.tx, &new_path) {
             if let Err(e) = m.update_timestamp() {
                 return_str += &format!("Cannot update timestamp: '{}'\n", path);
@@ -64,23 +71,20 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
             continue;
         }
 
+        // split path
         let (parent_path, sub_path) = split_path(&new_path);
 
         match metadata(&mut ctx.tx, &parent_path) {
             Ok(m) => {
+                // check permission
                 let rwx = permission::check_permission(ctx.uid, &m, PERMISSION);
                 if !rwx {
                     return_str += &format!("Permission denied\n");
                 }
 
-                if sub_path.contains('.') {
-                    if let Err(e) = create_file(&mut ctx.tx, &new_path, ctx.uid) {
-                        return_str += &format!("Cannot create file: '{}'\n", path);
-                    }
-                } else {
-                    if let Err(e) = create_dir(&mut ctx.tx, &new_path, ctx.uid) {
-                        return_str += &format!("Cannot create directory: '{}'\n", path);
-                    }
+                // create file
+                if let Err(e) = create_file(&mut ctx.tx, &new_path, ctx.uid) {
+                    return_str += &format!("Cannot create file: '{}'\n", path);
                 }
             }
             Err(e) => {
@@ -88,5 +92,6 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
             }
         }
     }
+
     (ctx, return_str)
 }

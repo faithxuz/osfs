@@ -10,8 +10,10 @@ pub fn cd(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         return (ctx, String::from(USAGE));
     }
 
+    // define params: none
     let mut opts = Options::new();
 
+    // parse args
     let matches = match opts.parse(&args) {
         Ok(m) => m,
         Err(f) => {
@@ -19,10 +21,12 @@ pub fn cd(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         }
     };
     
+    // support only one path
     if matches.free.len() > 1 {
         return (ctx, String::from("Too many arguments\n"));
     }
 
+    // get dir path
     let path = &matches.free[0]; 
     let dir_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
         Ok(p) => p,
@@ -33,11 +37,13 @@ pub fn cd(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         Err(e) => return (ctx, format!("Cannot find '{}'\n", path)),
     };
 
+    // check permission
     let rwx = permission::check_permission(ctx.uid, &meta, PERMISSION);
     if !rwx {
         return (ctx, format!("Permission denied\n"));
     }
 
+    // switch context
     if meta.is_dir() {
         ctx.wd = dir_path;
         (ctx, String::new())

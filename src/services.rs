@@ -26,6 +26,9 @@ pub use cp::cp;
 mod rm;
 pub use rm::rm;
 
+mod check;
+pub use check::check;
+
 use std::sync::mpsc::Sender;
 use super::fs::FsReq;
 
