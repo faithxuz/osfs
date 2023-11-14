@@ -39,6 +39,7 @@ use getopts::Options;
 use super::{Context, utils, permission};
 use crate::fs::{metadata, open_dir, open_file, create_dir, create_file};
 
+// define uasge and permission
 const USAGE: &str = "Usage: cp [-r] [-v] SOURSE DEST";
 const PERMISSION_SRC: (bool, bool, bool) = (true, false, false);
 const PERMISSION_TGT: (bool, bool, bool) = (false, true, false);
@@ -57,44 +58,51 @@ fn copy(ctx: &mut Context, src_path: &str, tgt_path: &str, copy_dir: bool, verbo
         return format!("Permission denied\n");
     }
 
+    // target path must be new
     if let Ok(_) = metadata(&mut ctx.tx, tgt_path) {
         return format!("'{}' exists\n", tgt_path);
     }
     
+    // if source path is a dir
     if src_meta.is_dir() {
         if !copy_dir {
             return format!("cp: -r not specified; omitting directory '{}'\n", tgt_path);
         }
-
-        let mut src_dd = match open_dir(&mut ctx.tx, &src_path) {
-            Ok(dd) => dd,
-            Err(e) => return format!("Cannot open directory: '{}'\n", src_path),
-        };
 
         let mut tgt_dd = match create_dir(&mut ctx.tx, &tgt_path, ctx.uid) {
             Ok(dd) => dd,
             Err(e) => return format!("Cannot create directory: '{}'\n", tgt_path),
         };
 
+        // get sub entrys of source dir
+        let mut src_dd = match open_dir(&mut ctx.tx, &src_path) {
+            Ok(dd) => dd,
+            Err(e) => return format!("Cannot open directory: '{}'\n", src_path),
+        };
         let src_vec = match src_dd.read() {
             Ok(v) => v,
             Err(e) => return format!("Cannot read file: '{}'\n", src_path),
         };
         
+        // iterate entry in sub entrys
         for sub_entry in src_vec {
+            // skip parent dir and itself
             if sub_entry.name == ".." || sub_entry.name == "." {
                 continue;
             }
 
+            // get sub path
             let parent_path = src_path;
             let sub_path = match utils::convert_path_to_abs(&parent_path, &sub_entry.name) {
                 Ok(p) => p,
                 Err(e) => return format!("Cannot convert '{}' to absolute path\n", sub_entry.name),
             };
 
+            // copy recursively
             copy(ctx, &sub_path, &tgt_path, copy_dir, verbose);
         }
     } else {
+        // read source file
         let mut src_fd = match open_file(&mut ctx.tx, &src_path) {
             Ok(fd) => fd,
             Err(e) => return format!("Cannot open file: '{}'\n", src_path),
@@ -109,9 +117,11 @@ fn copy(ctx: &mut Context, src_path: &str, tgt_path: &str, copy_dir: bool, verbo
             Err(e) => return format!("Cannot read file: '{}'\n", src_path),
         };
 
+        // write into target file
         tgt_fd.write(&src_vec);
     }
 
+    // add detailed info
     if verbose {
         return_str = format!("'{}' -> '{}'\n", src_path, tgt_path);
     }
@@ -123,10 +133,12 @@ pub fn cp(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         return (ctx, String::from(USAGE));
     }
 
+    // define params
     let mut opts = Options::new();
     opts.optflag("r", "", "Copy a directory");
     opts.optflag("v", "", "Enable verbose output");
 
+    // parse args
     let matches = match opts.parse(&args) {
         Ok(m) => m,
         Err(f) => {
@@ -138,6 +150,7 @@ pub fn cp(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         return (ctx, String::from(USAGE));
     }
 
+    // convert parameters to bool variables
     let copy_dir = matches.opt_present("r");
     let verbose = matches.opt_present("v");
 

@@ -10,7 +10,6 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-time = { version = "0.3", features = ["macros", "local-offset"] }
 threadpool = "1.8"
 getopts = "0.2"
 chrono = "0.4"
