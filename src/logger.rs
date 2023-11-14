@@ -1,3 +1,5 @@
+// [PASS]
+
 use chrono::prelude::*;
 
 /// Add a timestamp like `[hh:mm:ss] ` before the message to print.
@@ -12,5 +14,5 @@ use chrono::prelude::*;
 /// ```
 pub fn log(msg: &str) {
     let now = Local::now();
-    println!("[{}:{}:{}] {msg}", now.hour(), now.minute(), now.second());
+    println!("[{:0>2}:{:0>2}:{:0>2}] {msg}", now.hour(), now.minute(), now.second());
 }

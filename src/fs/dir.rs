@@ -51,7 +51,12 @@ impl Serialize for Entry {
     fn serialize(&self) -> Vec<u8> {
         let mut v = Vec::<u8>::with_capacity(ENTRY_SIZE);
         v.append(&mut utils::u32_to_u8arr(self.inode).to_vec());
-        let mut name = (*&self.name[0..NAME_LEN].to_string()).clone().into_bytes();
+        let mut name: Vec<u8>;
+        if self.name.len() > NAME_LEN {
+            name = (*&self.name[0..NAME_LEN].to_string()).clone().into_bytes();
+        } else {
+            name = self.name.as_bytes().to_vec();
+        }
         v.append(&mut name);
         v
     }
@@ -347,10 +352,11 @@ pub fn read_dir(dir_inode: u32) -> Result<Vec<Entry>> {
             Err(e) => todo!()
         });
     }
-    logger::log(&format!("Read directory: [dir_inode_addr]{dir_inode}"));
+    logger::log(&format!("Read directory: [dir_inode_addr] {dir_inode}"));
     Ok(v)
 }
 
+// [PASS]
 pub fn dir_add_entry(dir_inode: u32, entry_inode: u32, name: &str) -> Result<()> {
     let ents = match read_dir(dir_inode) {
         Ok(v) => v,
@@ -368,10 +374,10 @@ pub fn dir_add_entry(dir_inode: u32, entry_inode: u32, name: &str) -> Result<()>
     if let Err(e) =  file::write_file(dir_inode, &data) {
         todo!();
     };
-    logger::log(&format!("Add an entry to directory: \
-        [dir_inode_addr] {dir_inode}, 
-        [entry_inode_addr] {entry_inode}, 
-        [name] {name}
+    logger::log(&format!("Add an entry to directory:\n    \
+        [dir_inode_addr] {dir_inode}, \
+        [entry_inode_addr] {entry_inode},\n    \
+        [name] {name}\
     "));
     Ok(())
 }
@@ -391,9 +397,9 @@ pub fn dir_remove_entry(dir_inode: u32, entry_inode: u32) -> Result<()> {
             if let Err(e) =  file::write_file(dir_inode, &data) {
                 todo!();
             };
-            logger::log(&format!("Remove an entry from directory: \
-                [dir_inode_addr] {dir_inode}, 
-                [entry_inode_addr] {entry_inode}
+            logger::log(&format!("Remove an entry from directory: \n    \
+                [dir_inode_addr] {dir_inode}, \
+                [entry_inode_addr] {entry_inode}\
             "));
             return Ok(())
         }
