@@ -1,5 +1,3 @@
-use serde::de;
-
 use crate::sedes::{Serialize, Deserialize, SedesError};
 use super::utils;
 use super::{disk, data, inode};
