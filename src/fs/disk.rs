@@ -40,14 +40,14 @@ pub fn init_disk() -> Result<()> {
         Ok(meta) => {
             let file_size = meta.len();
             if file_size < DISK_SIZE as u64 {
-                logger::log("Insufficient file size. Remove original file.");
+                logger::log("[FS] Insufficient file size. Remove original file.");
                 fs::remove_file(DISK_PATH)?;
                 create_disk()?;
             }
         },
         Err(e) => match e.kind() {
             io::ErrorKind::NotFound => {
-                logger::log("Disk file not found.");
+                logger::log("[FS] Disk file not found.");
                 create_disk()?;
             },
             _ => return Err(DiskError::IoErr(e))
@@ -60,13 +60,13 @@ pub fn init_disk() -> Result<()> {
         f.read_exact(&mut buf)?;
     }
     if buf[0] != 227 {
-        logger::log("Found incorrupted disk file. Remove original file.");
+        logger::log("[FS] Found incorrupted disk file. Remove original file.");
         fs::remove_file(DISK_PATH)?;
         create_disk()?;
     }
 
-    logger::log("Initialized disk.");
-    logger::log(&format!("{:?}", superblock::superblock().unwrap()));
+    logger::log("[FS] Initialized disk.");
+    logger::log(&format!("[FS] Superblock: {:?}", superblock::superblock().unwrap()));
     Ok(())
 }
 
@@ -77,12 +77,12 @@ fn create_disk() -> Result<()> {
         f.write_all(&[1,0])?;
         f.flush()?;
     }
-    logger::log("Created disk file.");
+    logger::log("[FS] Created disk file.");
 
     // create superblock
     let buf = superblock::Superblock::new().serialize();
     write_blocks(&[(0, buf)].to_vec())?;
-    logger::log("Initialized superblock.");
+    logger::log("[FS] Initialized superblock.");
 
     // initialize inode and data bitmap
     let buf = [0u8; BLOCK_SIZE as usize];
@@ -94,7 +94,7 @@ fn create_disk() -> Result<()> {
     write_blocks(&data)?;
 
     // create dir: /
-    let (root_inode_addr, root_inode) = match inode::alloc_inode(0, true) {
+    let (root_inode_addr, _) = match inode::alloc_inode(0, true) {
         Ok(a) => a,
         Err(e) => match e {
             super::inode::InodeError::DiskErr(e) => return Err(e),
@@ -104,7 +104,8 @@ fn create_disk() -> Result<()> {
     if let Err(e) = dir::dir_add_entry(root_inode_addr, root_inode_addr, ".") {
         todo!()
     }
-    logger::log("Initialized root dir.");
+
+    logger::log("[FS] Initialized root dir.");
 
     Ok(())
 }

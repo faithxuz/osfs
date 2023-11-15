@@ -268,7 +268,7 @@ pub fn start_fs(
         return
     }
     let fd_table = Arc::new(Mutex::new(FdTable::new()));
-    logger::log("Created fd table");
+    logger::log("[FS] Created fd table");
 
     if let Err(e) = started.send(Ok(())) {
         logger::log(&format!("[ERR][FS] Failed to send start:ok. Msg: {e}"));

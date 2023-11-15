@@ -264,7 +264,7 @@ pub fn open_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) ->
         }
     }
 
-    logger::log(&format!("Open directory: {path}"));
+    logger::log(&format!("[FS] Open directory: {path}"));
     Ok(Dd::new(inode_addr, metadata, tx, fd_table.clone()))
 }
 
@@ -309,7 +309,7 @@ pub fn create_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str, 
     let mut lock = utils::mutex_lock(fd_table.lock());
     lock.add_dir(inode.0, &inode.1).unwrap();
 
-    logger::log(&format!("Create directory by user{uid}: {path}"));
+    logger::log(&format!("[FS] Create directory by user{uid}: {path}"));
     Ok(Dd::new(inode.0, metadata, tx.clone(), fd_table.clone()))
 }
 
@@ -367,7 +367,7 @@ pub fn remove_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) 
     // free inode
     inode::free_inode(inode_addr)?;
 
-    logger::log(&format!("Remove directory: {path}"));
+    logger::log(&format!("[FS] Remove directory: {path}"));
     Ok(())
 }
 
@@ -383,7 +383,7 @@ pub fn read_dir(dir_inode: u32) -> Result<Vec<Entry>> {
     for i in 0..size {
         v.push(Entry::deserialize(&mut data[i*ENTRY_SIZE..(i+1)*ENTRY_SIZE].to_vec()).unwrap());
     }
-    logger::log(&format!("Read directory: [dir_inode_addr] {dir_inode}"));
+    logger::log(&format!("[FS] Read directory: [dir_inode_addr] {dir_inode}"));
     Ok(v)
 }
 
@@ -404,7 +404,7 @@ pub fn dir_add_entry(dir_inode: u32, entry_inode: u32, name: &str) -> Result<()>
     let mut data = file::read_file(dir_inode)?;
     data.append(&mut ent.serialize());
     file::write_file(dir_inode, &data)?;
-    logger::log(&format!("Add an entry to directory:\n    \
+    logger::log(&format!("[FS] Add an entry to directory:\n    \
         [dir_inode_addr] {dir_inode}, \
         [entry_inode_addr] {entry_inode},\n    \
         [name] {name}\
@@ -427,7 +427,7 @@ pub fn dir_remove_entry(dir_inode: u32, entry_inode: u32) -> Result<()> {
                 data.append(&mut ent.serialize());
             }
             file::write_file(dir_inode, &data)?;
-            logger::log(&format!("Remove an entry from directory: \n    \
+            logger::log(&format!("[FS] Remove an entry from directory: \n    \
                 [dir_inode_addr] {dir_inode}, \
                 [entry_inode_addr] {entry_inode}\
             "));

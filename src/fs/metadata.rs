@@ -128,7 +128,7 @@ impl Metadata {
         self.tx.send(FsReq::UpdateInode(tx, self.addr, self.inode)).unwrap();
         match rx.recv()? {
             Ok(_) => {
-                logger::log(&format!("Update permission for inode {}.", self.addr));
+                logger::log(&format!("[FS] Update permission for inode {}.", self.addr));
                 Ok(())
             },
             Err(e) => todo!()
@@ -151,7 +151,7 @@ impl Metadata {
         self.tx.send(FsReq::UpdateInode(tx, self.addr, self.inode)).unwrap();
         match rx.recv()? {
             Ok(_) => {
-                logger::log(&format!("Update timestamp for inode {}.", self.addr));
+                logger::log(&format!("[FS] Update timestamp for inode {}.", self.addr));
                 Ok(())
             },
             Err(e) => todo!()
@@ -187,6 +187,6 @@ pub fn metadata(tx: Sender<FsReq>, path: &str) -> Result<Metadata> {
         }
     };
 
-    logger::log(&format!("Get metadata of \"{path}\""));
+    logger::log(&format!("[FS] Get metadata of \"{path}\""));
     Ok(Metadata::new(inode_addr, inode, tx))
 }

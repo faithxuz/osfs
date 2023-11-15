@@ -8,7 +8,7 @@ pub fn mutex_lock<T>(result: LockResult<MutexGuard<'_, T>>) -> MutexGuard<'_, T>
         Ok(l) => l,
         Err(poisoned) => {
             let l = poisoned.into_inner();
-            logger::log(&format!("Recovered from poisoned: {l:?}"));
+            logger::log(&format!("[FS] Recovered from poisoned: {l:?}"));
             l
         }
     }

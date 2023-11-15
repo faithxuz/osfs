@@ -184,7 +184,7 @@ pub fn open_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) -
         }
     }
 
-    logger::log(&format!("Open file: {path}"));
+    logger::log(&format!("[FS] Open file: {path}"));
     Ok(Fd::new(inode_addr, metadata, tx, fd_table.clone()))
 }
 
@@ -245,7 +245,7 @@ pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str,
     let mut lock = utils::mutex_lock(fd_table.lock());
     lock.add_file(inode.0, &inode.1).unwrap();
 
-    logger::log(&format!("Create file by user{uid}: {path}"));
+    logger::log(&format!("[FS] Create file by user{uid}: {path}"));
     Ok(Fd::new(inode.0, metadata, tx.clone(), fd_table.clone()))
 }
 
@@ -307,7 +307,7 @@ pub fn remove_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str)
     // free inode
     inode::free_inode(inode_addr)?;
 
-    logger::log(&format!("Remove file: {path}"));
+    logger::log(&format!("[FS] Remove file: {path}"));
     Ok(())
 }
 
