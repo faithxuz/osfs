@@ -48,12 +48,6 @@ impl BlockBitmap {
         Ok(())
     }
 
-    pub fn check(&self, pos: u32) -> Result<bool> {
-        let map = self.get_u64(pos)?;
-        let flag: u64 = 1 << (pos % 64);
-        Ok(map & flag > 0)
-    }
-
     pub fn next_usable(&self) -> Option<u32> {
         for i in 0..BITMAP_SIZE {
             let mut flag = 1;
@@ -127,14 +121,6 @@ impl Bitmap {
     pub fn get_serialized_map(&self, index: usize) -> Result<Vec<u8>> {
         match self.maps.get(index) {
             Some(m) => Ok(m.serialize()),
-            None => Err(BitmapError::InvalidPos)
-        }
-    }
-
-    pub fn check(&self, pos: u32) -> Result<bool> {
-        let (map, pos) = Self::get_pos(pos);
-        match self.maps.get(map as usize) {
-            Some(b) => b.check(pos),
             None => Err(BitmapError::InvalidPos)
         }
     }

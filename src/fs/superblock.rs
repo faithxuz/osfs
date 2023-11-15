@@ -1,18 +1,12 @@
-use crate::sedes::{Serialize, Deserialize, SedesError};
-use super::utils;
-use super::{disk, data, inode};
-
-const SUPERBLOCK_SIZE: usize = 30;
-
 // ====== ERROR ======
 
-use std::{error, fmt};
+use std::{error, fmt, result, io};
+use super::error::*;
 
 #[derive(Debug)]
 pub enum SuperblockError {
-    ReadErr,
     NotInitialized,
-    DeserializeErr(SedesError),
+    IoErr(io::Error),
 }
 
 impl error::Error for SuperblockError {}
@@ -23,13 +17,19 @@ impl fmt::Display for SuperblockError {
     }
 }
 
-impl From<SedesError> for SuperblockError {
-    fn from(e: SedesError) -> Self { Self::DeserializeErr(e) }
+impl From<io::Error> for SuperblockError {
+    fn from(e: io::Error) -> Self { Self::IoErr(e) }
 }
 
-type Result<T> = std::result::Result<T, SuperblockError>;
+type Result<T> = result::Result<T, SuperblockError>;
 
 // ====== SUPERBLOCK ======
+
+use crate::sedes::{Serialize, Deserialize};
+use super::utils;
+use super::{disk, data, inode};
+
+const SUPERBLOCK_SIZE: usize = 30;
 
 #[derive(Debug)]
 pub struct Superblock {
@@ -96,20 +96,21 @@ impl Deserialize for Superblock {
 
 // ====== FN ======
 
+// [PASS]
 /// ## Error
 /// 
-/// - ReadErr
 /// - NotInitialized
+/// - IoErr
 pub fn superblock() -> Result<Superblock> {
     let mut buf = match disk::read_blocks(&[0].to_vec()) {
         Ok(b) => b,
-        Err(e) => return Err(SuperblockError::ReadErr)
+        Err(e) => match e {
+            DiskError::IoErr(e) => return Err(SuperblockError::IoErr(e)),
+            _ => panic!("{e:?}")
+        }
     };
-    if *(match buf.get(0) {
-        Some(b) => b,
-        None => return Err(SuperblockError::ReadErr)
-    }) != 227 {
+    if *(buf.get(0).unwrap()) != 227 {
         return Err(SuperblockError::NotInitialized);
     }
-    Ok(Superblock::deserialize(&mut buf)?)
+    Ok(Superblock::deserialize(&mut buf).unwrap())
 }
