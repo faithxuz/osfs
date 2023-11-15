@@ -10,13 +10,25 @@ mod metadata;
 mod file;
 mod dir;
 
+mod error {
+    pub use super::bitmap::BitmapError;
+    pub use super::disk::DiskError;
+    pub use super::superblock::SuperblockError;
+    pub use super::inode::InodeError;
+    pub use super::data::DataError;
+    pub use super::metadata::MetadataError;
+    pub use super::file::FdError;
+    pub use super::dir::DdError;
+    pub use super::super::sedes::SedesError;
+}
+
 pub use metadata::{Metadata, MetadataError, Rwx};
 pub use file::{Fd, FdError};
 pub use dir::{Dd, DdError, Entry as DirEntry};
 
 // ====== ERROR ======
 
-use std::{error, fmt, result};
+use std::{fmt, result};
 use std::sync::mpsc::RecvError;
 
 #[derive(Debug)]
@@ -31,7 +43,7 @@ pub enum FsError {
     RecvErr(RecvError),
 }
 
-impl error::Error for FsError {}
+impl std::error::Error for FsError {}
 
 impl fmt::Display for FsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -138,7 +150,7 @@ pub enum FsReq {
 
     /// `tx`: send back result
     /// 
-    /// `dir_inode`: inode virtual address of the directory to edit
+    /// `dir_inode`: inode virtual address of the directory to modify
     /// 
     /// `entry_inode`: inode virtual address of the entry to add to directory
     /// 
@@ -147,7 +159,7 @@ pub enum FsReq {
 
     /// `tx`: send back result
     /// 
-    /// `dir_inode`: inode virtual address of the directory to edit
+    /// `dir_inode`: inode virtual address of the directory to modify
     /// 
     /// `entry_inode`: inode virtual address of the entry to remove from directory
     DirRemoveEntry(Sender<Result<()>>, u32, u32),
@@ -182,6 +194,9 @@ impl FdTable {
         }
     }
 
+    /// ## Error
+    /// 
+    /// - NotFileButDir
     pub fn add_file(&mut self, inode_addr: u32, inode: &inode::Inode) -> Result<()> {
         if inode.mode & inode::DIR_FLAG > 0 {
             return Err(FsError::NotFileButDir)
@@ -192,6 +207,9 @@ impl FdTable {
         Ok(())
     }
 
+    /// ## Error
+    /// 
+    /// - NotDirButFile
     pub fn add_dir(&mut self, inode_addr: u32, inode: &inode::Inode) -> Result<()> {
         if inode.mode & inode::DIR_FLAG == 0 {
             return Err(FsError::NotDirButFile)
@@ -202,6 +220,9 @@ impl FdTable {
         Ok(())
     }
 
+    /// ## Error
+    /// 
+    /// - NotFileButDir
     pub fn get_file(&mut self, inode: u32) -> Result<Option<()>> {
         match self.data.get_mut(&inode) {
             Some(ent) => {
@@ -215,6 +236,9 @@ impl FdTable {
         }
     }
 
+    /// ## Error
+    /// 
+    /// - NotDirButFile
     pub fn get_dir(&mut self, inode: u32) -> Result<Option<()>> {
         match self.data.get_mut(&inode) {
             Some(ent) => {
@@ -398,6 +422,10 @@ pub fn start_fs(
     }
 }
 
+/// ## Error
+/// 
+/// - InvalidPath
+/// - NotFound
 fn path_to_inode(path: &str) -> Result<u32> {
     // assume path is absolute
     let mut path_vec: Vec<&str> = path.split('/').collect();

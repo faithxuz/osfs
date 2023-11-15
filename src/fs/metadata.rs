@@ -1,14 +1,15 @@
 // ====== ERROR =======
 
-use std::{error, fmt};
+use std::{error, fmt, sync::mpsc};
+use super::error::*;
 use super::disk;
 
 #[derive(Debug)]
 pub enum MetadataError {
+    RecvErr(String),
+    InvalidPath,
     NotFound,
     DiskErr(disk::DiskError),
-    SystemTimeErr(std::time::SystemTimeError),
-    RecvErr(mpsc::RecvError),
 }
 
 impl error::Error for MetadataError {}
@@ -23,12 +24,8 @@ impl From<disk::DiskError> for MetadataError {
     fn from(e: disk::DiskError) -> Self { Self::DiskErr(e) }
 }
 
-impl From<std::time::SystemTimeError> for MetadataError {
-    fn from(e: std::time::SystemTimeError) -> Self { Self::SystemTimeErr(e) }
-}
-
 impl From<mpsc::RecvError> for MetadataError {
-    fn from(e: mpsc::RecvError) -> Self { Self::RecvErr(e) }
+    fn from(e: mpsc::RecvError) -> Self { Self::RecvErr(format!("{e:?}")) }
 }
 
 type Result<T> = std::result::Result<T, MetadataError>;
@@ -38,7 +35,7 @@ type Result<T> = std::result::Result<T, MetadataError>;
 use crate::logger;
 use super::FsReq;
 use super::inode;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::Sender;
 use chrono::prelude::*;
 
 /// Permissons: read, write, execute
@@ -167,19 +164,26 @@ impl Metadata {
 use super::FsError;
 use super::path_to_inode;
 
+/// ## Error
+/// 
+/// - InvalidAddr
+/// - NotFound
+/// - DiskErr
 pub fn metadata(tx: Sender<FsReq>, path: &str) -> Result<Metadata> {
     let inode_addr = match path_to_inode(path) {
         Ok(i) => i,
         Err(e) => match e {
             FsError::NotFound => return Err(MetadataError::NotFound),
-            _ => todo!()
+            FsError::InvalidPath => return Err(MetadataError::InvalidPath),
+            _ => panic!("{e:?}")
         }
     };
     let inode = match inode::load_inode(inode_addr) {
         Ok(i) => i,
         Err(e) => match e {
-            inode::InodeError::InvalidAddr => return Err(MetadataError::NotFound),
-            _ => todo!()
+            InodeError::InvalidAddr => return Err(MetadataError::NotFound),
+            InodeError::DiskErr(e) => return Err(MetadataError::DiskErr(e)),
+            _ => panic!("{e:?}")
         }
     };
 

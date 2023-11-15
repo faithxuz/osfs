@@ -1,9 +1,12 @@
 // ====== ERROR ======
 
-use std::{error, fmt, result};
+use std::{error, fmt, result, io, sync::mpsc};
+use super::error::*;
 
 #[derive(Debug)]
 pub enum FdError {
+    SendErr(String),
+    RecvErr(String),
     InvalidPath,
     NotFound,
     NotFile,
@@ -11,7 +14,9 @@ pub enum FdError {
     ParentNotDir,
     FileExists,
     FileOccupied,
+    FileIncorrupted,
     NoEnoughSpace,
+    IoErr(io::Error),
 }
 
 impl error::Error for FdError {}
@@ -22,15 +27,65 @@ impl fmt::Display for FdError {
     }
 }
 
+impl From<mpsc::SendError<FsReq>> for FdError {
+    fn from(e: mpsc::SendError<FsReq>) -> Self { Self::SendErr(format!("{e:?}")) }
+}
+
+impl From<mpsc::RecvError> for FdError {
+    fn from(e: mpsc::RecvError) -> Self { Self::RecvErr(format!("{e:?}")) }
+}
+
+impl From<io::Error> for FdError {
+    fn from(e: io::Error) -> Self { Self::IoErr(e) }
+}
+
+impl From<DiskError> for FdError {
+    fn from(e: DiskError) -> Self {
+        match e {
+            DiskError::InvalidAddr => return Self::FileIncorrupted,
+            DiskError::IoErr(e) => return Self::IoErr(e)
+        }
+    }
+}
+
+impl From<InodeError> for FdError {
+    fn from(e: InodeError) -> Self {
+        match e {
+            InodeError::InvalidAddr => return Self::NotFound,
+            InodeError::NoUsableBlock => return Self::NoEnoughSpace,
+            InodeError::DataTooBig => return Self::NoEnoughSpace,
+            InodeError::DiskErr(e) => return Self::DiskErr(e),
+        }
+    }
+}
+
+impl From<DataError> for FdError {
+    fn from(e: DataError) -> Self {
+        match e {
+            DataError::InvalidAddr => return Self::FileIncorrupted,
+            DataError::InsufficientUsableBlocks => return Self::NoEnoughSpace,
+            DataError::DiskErr(e) => return Self::DiskErr(e),
+        }
+    }
+}
+
+impl FdError {
+    fn DiskErr(e: DiskError) -> Self {
+        match e {
+            DiskError::InvalidAddr => return Self::FileIncorrupted,
+            DiskError::IoErr(e) => return Self::IoErr(e)
+        }
+    }
+}
+
 type Result<T> = result::Result<T, FdError>;
 
 // ====== FD ======
 
 use crate::logger;
-use super::FsReq;
-use super::metadata::Metadata;
-use super::FdTable;
-use std::sync::mpsc::{self, Sender};
+use super::{FsReq, FdTable, metadata::Metadata};
+use super::utils;
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 /// File descriptor.
@@ -65,14 +120,9 @@ impl Fd {
     /// Read file content. Return byte array [Vec]<[u8]> representing the content.
     pub fn read(&mut self) -> Result<Vec<u8>> {
         let (tx, rx) = mpsc::channel();
-        if let Err(e) = self.tx.send(FsReq::ReadFile(tx, self.inode)) {
-            todo!()
-        }
-        match rx.recv() {
-            Ok(res) => match res {
-                Ok(data) => Ok(data),
-                Err(e) => todo!()
-            },
+        self.tx.send(FsReq::ReadFile(tx, self.inode))?;
+        match rx.recv()? {
+            Ok(data) => Ok(data),
             Err(e) => todo!()
         }
     }
@@ -82,14 +132,9 @@ impl Fd {
     /// `data`: Content as byte array ([Vec]<[u8]>)
     pub fn write(&mut self, data: &Vec<u8>) -> Result<()> {
         let (tx, rx) = mpsc::channel();
-        if let Err(e) = self.tx.send(FsReq::WriteFile(tx, self.inode, data.clone())) {
-            todo!()
-        }
-        match rx.recv() {
-            Ok(res) => match res {
-                Ok(_) => Ok(()),
-                Err(e) => todo!()
-            },
+        self.tx.send(FsReq::WriteFile(tx, self.inode, data.clone()))?;
+        match rx.recv()? {
+            Ok(_) => Ok(()),
             Err(e) => todo!()
         }
     }
@@ -97,14 +142,7 @@ impl Fd {
 
 impl Drop for Fd {
     fn drop(&mut self) {
-        let mut lock = match self.table.lock() {
-            Ok(l) => l,
-            Err(poisoned) => {
-                let l = poisoned.into_inner();
-                logger::log(&format!("Recovered from poisoned: {l:?}"));
-                l
-            }
-        };
+        let mut lock = utils::mutex_lock(self.table.lock());
         lock.try_drop(self.inode);
     }
 }
@@ -119,36 +157,31 @@ pub fn open_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) -
     let inode_addr = match path_to_inode(path) {
         Ok(i) => i,
         Err(e) => match e {
+            FsError::InvalidPath => return Err(FdError::InvalidPath),
             FsError::NotFound => return Err(FdError::NotFound),
-            FsError::NotFileButDir => return Err(FdError::NotFile),
-            _ => todo!()
+            _ => panic!("{e:?}")
         }
     };
     let inode = match inode::load_inode(inode_addr) {
         Ok(i) => i,
         Err(e) => match e {
-            inode::InodeError::InvalidAddr => return Err(FdError::NotFound),
-            _ => todo!()
+            InodeError::InvalidAddr => return Err(FdError::NotFound),
+            InodeError::DiskErr(e) => return Err(FdError::DiskErr(e)),
+            _ => panic!("{e:?}")
         }
     };
     let metadata = Metadata::new(inode_addr, inode, tx.clone());
 
     // add into fd table
-    let mut lock = match fd_table.lock() {
-        Ok(l) => l,
-        Err(poisoned) => {
-            let l = poisoned.into_inner();
-            logger::log(&format!("Recovered from poisoned: {l:?}"));
-            l
-        }
-    };
+    let mut lock = utils::mutex_lock(fd_table.lock());
     match lock.get_file(inode_addr) {
         Ok(opt) => if let None = opt {
-            if let Err(e) = lock.add_file(inode_addr, &inode) {
-                todo!()
-            }
+            lock.add_file(inode_addr, &inode).unwrap();
         },
-        Err(e) => todo!()
+        Err(e) => match e {
+            FsError::NotFileButDir => return Err(FdError::FileIncorrupted),
+            _ => panic!("{e:?}")
+        }
     }
 
     logger::log(&format!("Open file: {path}"));
@@ -165,145 +198,128 @@ pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str,
     let parent_dd = match dir::open_dir(tx.clone(), fd_table.clone(), &parent_path) {
         Ok(d) => d,
         Err(e) => match e {
-            dir::DdError::NotFound => return Err(FdError::ParentNotFound),
-            dir::DdError::NotDir => return Err(FdError::ParentNotDir),
+            DdError::NotFound => return Err(FdError::ParentNotFound),
+            DdError::NotDir => return Err(FdError::ParentNotDir),
             _ => todo!()
         }
     };
-    if let Ok(_) = metadata(tx.clone(), path) {
-        return Err(FdError::FileExists);
+    match metadata(tx.clone(), path) {
+        Ok(_) => return Err(FdError::FileExists),
+        Err(e) => match e {
+            MetadataError::InvalidPath => return Err(FdError::InvalidPath),
+            MetadataError::NotFound => (),
+            MetadataError::DiskErr(e) => return Err(FdError::DiskErr(e)),
+            _ => panic!("{e:?}")
+        }
     }
 
-    let mut inode = match inode::alloc_inode(uid, false) {
-        Ok(i) => i,
-        Err(e) => todo!()
-    };
+    let mut inode = inode::alloc_inode(uid, false)?;
     let metadata = Metadata::new(inode.0, inode.1, tx.clone());
 
     // add parent/new
     if let Err(e) = dir::dir_add_entry(parent_dd.inode_addr(), inode.0, &dir_name) {
-        todo!()
+        match e {
+            DdError::DirIncorrupted => return Err(FdError::FileIncorrupted),
+            DdError::NoEnoughSpace => return Err(FdError::NoEnoughSpace),
+            DdError::EntryExists => return Err(FdError::FileExists),
+            DdError::IoErr(e) => return Err(FdError::IoErr(e)),
+            _ => panic!("{e:?}")
+        }
     }
 
     // alloc data block
-    let blocks = match data::alloc_blocks(1) {
-        Ok(v) => v,
-        Err(e) => todo!()
-    };
+    let blocks = data::alloc_blocks(1)?;
 
     // write a EOF
     let data = [(match blocks.get(0) {
         Some(a) => *a,
         None => todo!()
     }, [0u8].to_vec())].to_vec();
-    if let Err(e) = disk::write_blocks(&data) {
-        todo!()
-    }
+    disk::write_blocks(&data)?;
 
     // update and save inode
-    if let Err(e) = inode::update_blocks(&mut inode.1, &blocks) {
-        todo!()
-    }
-    if let Err(e) = inode::save_inode(inode.0, &inode.1) {
-        todo!()
-    }
+    inode::update_blocks(&mut inode.1, &blocks)?;
+    inode::save_inode(inode.0, &inode.1)?;
 
     // add into fd table
-    let mut lock = match fd_table.lock() {
-        Ok(l) => l,
-        Err(poisoned) => {
-            let l = poisoned.into_inner();
-            logger::log(&format!("Recovered from poisoned: {l:?}"));
-            l
-        }
-    };
-    if let Err(e) = lock.add_file(inode.0, &inode.1) {
-        todo!()
-    }
+    let mut lock = utils::mutex_lock(fd_table.lock());
+    lock.add_file(inode.0, &inode.1).unwrap();
 
     logger::log(&format!("Create file by user{uid}: {path}"));
     Ok(Fd::new(inode.0, metadata, tx.clone(), fd_table.clone()))
 }
 
+/// ## Error
+/// 
+/// - InvalidPath
+/// - NotFound
+/// - NotFile
+/// - FileOccupied
+/// - FileIncorrupted
+/// - ParentNotFound
+/// - ParentNotDir
+/// - IoErr
 pub fn remove_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) -> Result<()> {
     let inode_addr = match path_to_inode(path) {
         Ok(i) => i,
         Err(e) => match e {
+            FsError::InvalidPath => return Err(FdError::InvalidPath),
             FsError::NotFound => return Err(FdError::NotFound),
-            FsError::NotFileButDir => return Err(FdError::NotFile),
-            _ => todo!()
+            _ => panic!("{e:?}")
         }
     };
+    let inode = inode::load_inode(inode_addr)?;
+    let metadata = Metadata::new(inode_addr, inode, tx.clone());
+    if metadata.is_dir() {
+        return Err(FdError::NotFile);
+    }
 
-    let mut lock = match fd_table.lock() {
-        Ok(l) => l,
-        Err(poisoned) => {
-            let l = poisoned.into_inner();
-            logger::log(&format!("Recovered from poisoned: {l:?}"));
-            l
-        }
-    };
+    let mut lock = utils::mutex_lock(fd_table.lock());
     if let Ok(_) = lock.get_dir(inode_addr) {
         return Err(FdError::FileOccupied);
     }
 
     let path_vec: Vec<&str> = path.split('/').collect();
     let parent_path = path_vec[..path_vec.len()-1].join("/");
-    let mut parent_dd = match dir::open_dir(tx.clone(), fd_table.clone(), &parent_path) {
+    let parent_dd = match dir::open_dir(tx.clone(), fd_table.clone(), &parent_path) {
         Ok(d) => d,
         Err(e) => match e {
-            dir::DdError::NotFound => return Err(FdError::ParentNotFound),
-            dir::DdError::NotDir => return Err(FdError::ParentNotDir),
-            _ => todo!()
+            DdError::NotFound => return Err(FdError::ParentNotFound),
+            DdError::NotDir => return Err(FdError::ParentNotDir),
+            _ => panic!("{e:?}")
         }
     };
-    if let Err(e) = metadata(tx.clone(), path) {
-        return Err(FdError::NotFound);
-    }
 
     // remove entry from parent directory
-    if let Err(e) = parent_dd.remove_entry(inode_addr) {
-        todo!()
-    };
-
-    // remove file data
-    let inode = match inode::load_inode(inode_addr) {
-        Ok(i) => i,
-        Err(e) => todo!()
-    };
-    let blocks = match inode::get_blocks(&inode) {
-        Ok(v) => v,
-        Err(e) => todo!()
-    };
-    if let Err(e) = data::free_blocks(&blocks) {
-        todo!()
+    if let Err(e) = dir::dir_remove_entry(parent_dd.inode_addr(), inode_addr) {
+        match e {
+            DdError::DirIncorrupted => return Err(FdError::FileIncorrupted),
+            DdError::IoErr(e) => return Err(FdError::IoErr(e)),
+            _ => panic!("{e:?}")
+        }
     }
 
+    // remove file data
+    let inode = inode::load_inode(inode_addr)?;
+    let blocks = inode::get_blocks(&inode)?;
+    data::free_blocks(&blocks)?;
+
     // free inode
-    if let Err(e) = inode::free_inode(inode_addr) {
-        todo!()
-    };
+    inode::free_inode(inode_addr)?;
 
     logger::log(&format!("Remove file: {path}"));
     Ok(())
 }
 
+/// ## Error
+/// 
+/// - NotFound
+/// - FileIncorrupted
+/// - IoErr
 pub fn read_file(inode: u32) -> Result<Vec<u8>> {
-    let inode = match inode::load_inode(inode) {
-        Ok(i) => i,
-        Err(e) => match e {
-            inode::InodeError::InvalidAddr => return Err(FdError::NotFound),
-            _ => todo!()
-        }
-    };
-    let blocks = match inode::get_blocks(&inode) {
-        Ok(b) => b,
-        Err(e) => todo!()
-    };
-    let mut buf = match disk::read_blocks(&blocks) {
-        Ok(b) => b,
-        Err(e) => todo!()
-    };
+    let inode = inode::load_inode(inode)?;
+    let blocks = inode::get_blocks(&inode)?;
+    let mut buf = disk::read_blocks(&blocks)?;
 
     // trim end
     let end_at = 0;
@@ -317,16 +333,16 @@ pub fn read_file(inode: u32) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
+/// ## Error
+/// 
+/// - NotFound
+/// - NoEnoughSpace
+/// - FileIncorrupted
+/// - IoErr
 pub fn write_file(inode_addr: u32, buf: &Vec<u8>) -> Result<()> {
     let blocks_len = buf.len().div_ceil(disk::BLOCK_SIZE as usize);
-    let mut inode = match inode::load_inode(inode_addr) {
-        Ok(i) => i,
-        Err(e) => todo!()
-    };
-    let mut blocks = match inode::get_blocks(&inode) {
-        Ok(v) => v,
-        Err(e) => todo!()
-    };
+    let mut inode = inode::load_inode(inode_addr)?;
+    let mut blocks = inode::get_blocks(&inode)?;
 
     if blocks.len() > blocks_len {
         // free
@@ -335,26 +351,15 @@ pub fn write_file(inode_addr: u32, buf: &Vec<u8>) -> Result<()> {
         for _ in 0..to_free_count {
             to_free.push(blocks.pop().unwrap());
         }
-        if let Err(e) = data::free_blocks(&to_free) {
-            todo!()
-        }
-        if let Err(e) = inode::update_blocks(&mut inode, &blocks) {
-            todo!()
-        }
+        data::free_blocks(&to_free)?;
+        inode::update_blocks(&mut inode, &blocks)?;
     } else if blocks.len() < blocks_len {
         // alloc
-        let mut to_append = match data::alloc_blocks((blocks_len - blocks.len()) as u32) {
-            Ok(v) => v,
-            Err(e) => todo!()
-        };
+        let mut to_append = data::alloc_blocks((blocks_len - blocks.len()) as u32)?;
         blocks.append(&mut to_append);
-        if let Err(e) = inode::update_blocks(&mut inode, &blocks) {
-            todo!()
-        }
+        inode::update_blocks(&mut inode, &blocks)?;
     }
-    if let Err(e) = inode::save_inode(inode_addr, &inode) {
-        todo!()
-    }
+    inode::save_inode(inode_addr, &inode)?;
 
     if blocks_len == 0 {
         return Ok(());
@@ -367,9 +372,7 @@ pub fn write_file(inode_addr: u32, buf: &Vec<u8>) -> Result<()> {
         data.push((*addr, buf[i*disk::BLOCK_SIZE as usize..(i+1)*disk::BLOCK_SIZE as usize].to_vec()));
     }
     data.push((last_block, buf[(blocks_len-1)*disk::BLOCK_SIZE as usize..].to_vec()));
-    if let Err(e) = disk::write_blocks(&data) {
-        todo!()
-    }
+    disk::write_blocks(&data)?;
 
     Ok(())
 }
