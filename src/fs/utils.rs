@@ -1,8 +1,18 @@
-pub fn u16_to_u8arr(a: u16) -> [u8; 2] {
-    let mut arr = [0u8; 2];
-    arr[0] = (a >> 8)       as u8;
-    arr[1] = (a % (1 << 8)) as u8;
-    arr
+use crate::logger;
+use std::sync::{MutexGuard, LockResult};
+
+pub fn mutex_lock<T>(result: LockResult<MutexGuard<'_, T>>) -> MutexGuard<'_, T>
+    where T: core::fmt::Debug
+{
+    match result {
+        Ok(l) => l,
+        Err(poisoned) => {
+            let l = poisoned.into_inner();
+            logger::log(&format!("[FS] Recovered from poisoned: {l:?}"));
+            l
+        }
+    }
+
 }
 
 pub fn u32_to_u8arr(a: u32) -> [u8; 4] {
@@ -27,10 +37,6 @@ pub fn u64_to_u8arr(a: u64) -> [u8; 8] {
     arr
 }
 
-pub fn u8arr_to_u16(arr: &[u8]) -> u16 {
-    u16::from_be_bytes(<[u8;2]>::try_from(arr).unwrap())
-}
-
 pub fn u8arr_to_u32(arr: &[u8]) -> u32 {
     u32::from_be_bytes(<[u8;4]>::try_from(arr).unwrap())
 }
@@ -43,7 +49,7 @@ pub fn count_ones_in_u64(n: u64) -> u32 {
     let mut a: u32 = 0;
     let mut b: u64 = 1;
     for _ in 0..64 {
-        if n | b > 0 {
+        if n & b > 0 {
             a += 1;
         }
         b = b << 1;

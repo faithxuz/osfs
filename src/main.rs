@@ -13,12 +13,13 @@
 use std::sync::mpsc;
 use std::thread;
 use simdisk::{
-    fs::start_fs,
+    start_fs,
     start_server,
     logger,
 };
 
 fn main() {
+    logger::log("[MAIN] Simdisk starting...");
     let (fs_tx, fs_rx) = mpsc::channel();
     let (started_tx, started_rx) = mpsc::channel();
     let ft = fs_tx.clone();
@@ -28,7 +29,7 @@ fn main() {
         logger::log(e);
         return;
     }
-    logger::log("Simdisk started.");
+    logger::log("[MAIN] Simdisk started.");
 
     start_server(fs_tx);
 }

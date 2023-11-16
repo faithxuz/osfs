@@ -15,7 +15,7 @@ use super::{Context, utils, permission};
 use crate::fs::{metadata, create_dir};
 
 // define uasge and permission
-const USAGE: &str = "Usage: mkdir [-p] [-v] <directory1> <directory2> ...";
+const USAGE: &str = "Usage: mkdir [-p] [-v] <directory1> <directory2> ...\n";
 const PERMISSION: (bool, bool, bool) = (false, true, false);
 
 // split parent path and sub path
@@ -59,15 +59,15 @@ fn create_nested_dir(ctx: &mut Context, path: &str, verbose: bool) -> String {
                     }
                 }
                 Err(e) => {
-                    // doesn't exist: create dir
+                    // doesn\"t exist: create dir
                     match create_dir(&mut ctx.tx, &current_path, ctx.uid) {
                         Ok(_) => {
                             // add detailed info
                             if verbose {
-                                return_str += &format!("mkdir: created directory '{}'\n", current_path);
+                                return_str += &format!("mkdir: created directory \"{}\"\n", current_path);
                             }
                         },
-                        Err(e) => return_str += &format!("Cannot create directory: '{}'\n", current_path),
+                        Err(e) => return_str += &format!("Cannot create directory \"{}\"\n", current_path),
                     }
                 }
             }
@@ -84,6 +84,7 @@ pub fn mkdir(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
 
     // define params
     let mut opts = Options::new();
+    opts.optflag("h", "", "Help");
     opts.optflag("p", "", "Create parent directories as needed");
     opts.optflag("v", "", "Print a message for each created directory");
 
@@ -94,6 +95,10 @@ pub fn mkdir(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
             return (ctx, f.to_string());
         }
     };
+
+    if matches.opt_present("h") {
+        return (ctx, String::from(USAGE));
+    }
 
     if matches.free.is_empty() {
         return (ctx, String::from(USAGE));
@@ -110,16 +115,13 @@ pub fn mkdir(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         let dir_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
             Ok(p) => p,
             Err(e) => {
-                return_str += &format!("Cannot convert '{}' to absolute path\n", path);
+                return_str += &format!("Cannot convert \"{}\" to absolute path\n", path);
                 continue;
             },
         };
 
         if let Ok(_) = metadata(&mut ctx.tx, &dir_path) {
-            // add detailed info
-            if verbose {
-                return_str += &format!("mkdir: cannot create directory '{}': File exists\n", path);
-            }
+            return_str += &format!("mkdir: cannot create directory \"{}\": File exists\n", path);
         }
 
         // split path
@@ -139,16 +141,16 @@ pub fn mkdir(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                     Ok(_) => {
                         // add detailed info
                         if verbose {
-                            return_str += &format!("mkdir: created directory '{}'\n", path);
+                            return_str += &format!("mkdir: created directory \"{}\"\n", path);
                         }
                     },
-                    Err(e) => return_str += &format!("Cannot create directory: '{}'\n", path),
+                    Err(e) => return_str += &format!("Cannot create directory \"{}\"\n", path),
                 }
             }
             Err(e) => {
                 // return error if "-r" is not specified
                 if !recursive {
-                    return_str += &format!("mkdir: cannot create directory '{}': No such file or directory\n", parent_path);
+                    return_str += &format!("mkdir: cannot create directory \"{}\": No such file or directory\n", parent_path);
                     continue;
                 }
 

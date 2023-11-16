@@ -10,14 +10,25 @@ mod metadata;
 mod file;
 mod dir;
 
+mod error {
+    pub use super::bitmap::BitmapError;
+    pub use super::disk::DiskError;
+    pub use super::superblock::SuperblockError;
+    pub use super::inode::InodeError;
+    pub use super::data::DataError;
+    pub use super::metadata::MetadataError;
+    pub use super::file::FdError;
+    pub use super::dir::DdError;
+    pub use super::super::sedes::SedesError;
+}
+
 pub use metadata::{Metadata, MetadataError, Rwx};
 pub use file::{Fd, FdError};
 pub use dir::{Dd, DdError, Entry as DirEntry};
 
 // ====== ERROR ======
 
-use std::{error, fmt, result};
-use std::sync::mpsc::RecvError;
+use std::{fmt, result, sync::mpsc};
 
 #[derive(Debug)]
 pub enum FsError {
@@ -28,10 +39,11 @@ pub enum FsError {
     MetadataErr(MetadataError),
     FileErr(FdError),
     DirErr(DdError),
-    RecvErr(RecvError),
+    SendErr(String),
+    RecvErr(String),
 }
 
-impl error::Error for FsError {}
+impl std::error::Error for FsError {}
 
 impl fmt::Display for FsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -51,8 +63,12 @@ impl From<DdError> for FsError {
     fn from(e: DdError) -> Self { Self::DirErr(e) }
 }
 
-impl From<RecvError> for FsError {
-    fn from(e: RecvError) -> Self { Self::RecvErr(e) }
+impl From<mpsc::SendError<FsReq>> for FsError {
+    fn from(e: mpsc::SendError<FsReq>) -> Self { Self::SendErr(format!("{e:?}")) }
+}
+
+impl From<mpsc::RecvError> for FsError {
+    fn from(e: mpsc::RecvError) -> Self { Self::RecvErr(format!("{e:?}")) }
 }
 
 type Result<T> = result::Result<T, FsError>;
@@ -138,7 +154,7 @@ pub enum FsReq {
 
     /// `tx`: send back result
     /// 
-    /// `dir_inode`: inode virtual address of the directory to edit
+    /// `dir_inode`: inode virtual address of the directory to modify
     /// 
     /// `entry_inode`: inode virtual address of the entry to add to directory
     /// 
@@ -147,7 +163,7 @@ pub enum FsReq {
 
     /// `tx`: send back result
     /// 
-    /// `dir_inode`: inode virtual address of the directory to edit
+    /// `dir_inode`: inode virtual address of the directory to modify
     /// 
     /// `entry_inode`: inode virtual address of the entry to remove from directory
     DirRemoveEntry(Sender<Result<()>>, u32, u32),
@@ -182,6 +198,9 @@ impl FdTable {
         }
     }
 
+    /// ## Error
+    /// 
+    /// - NotFileButDir
     pub fn add_file(&mut self, inode_addr: u32, inode: &inode::Inode) -> Result<()> {
         if inode.mode & inode::DIR_FLAG > 0 {
             return Err(FsError::NotFileButDir)
@@ -192,6 +211,9 @@ impl FdTable {
         Ok(())
     }
 
+    /// ## Error
+    /// 
+    /// - NotDirButFile
     pub fn add_dir(&mut self, inode_addr: u32, inode: &inode::Inode) -> Result<()> {
         if inode.mode & inode::DIR_FLAG == 0 {
             return Err(FsError::NotDirButFile)
@@ -202,6 +224,9 @@ impl FdTable {
         Ok(())
     }
 
+    /// ## Error
+    /// 
+    /// - NotFileButDir
     pub fn get_file(&mut self, inode: u32) -> Result<Option<()>> {
         match self.data.get_mut(&inode) {
             Some(ent) => {
@@ -215,6 +240,9 @@ impl FdTable {
         }
     }
 
+    /// ## Error
+    /// 
+    /// - NotDirButFile
     pub fn get_dir(&mut self, inode: u32) -> Result<Option<()>> {
         match self.data.get_mut(&inode) {
             Some(ent) => {
@@ -232,7 +260,7 @@ impl FdTable {
 // ====== FN ======
 
 use crate::logger;
-use std::sync::mpsc::{self, Sender, Receiver};
+use std::sync::mpsc::{Sender, Receiver};
 
 pub fn start_fs(
     started: Sender<result::Result<(), & 'static str>>,
@@ -244,7 +272,7 @@ pub fn start_fs(
         return
     }
     let fd_table = Arc::new(Mutex::new(FdTable::new()));
-    logger::log("Created fd table");
+    logger::log("[FS] Created fd table");
 
     if let Err(e) = started.send(Ok(())) {
         logger::log(&format!("[ERR][FS] Failed to send start:ok. Msg: {e}"));
@@ -261,7 +289,9 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             },
             FsReq::Metadata(tx, path) => {
@@ -271,7 +301,9 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             },
             FsReq::OpenFile(tx, path) => {
@@ -281,7 +313,9 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             },
             FsReq::CreateFile(tx, path, uid) => {
@@ -291,7 +325,9 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             },
             FsReq::RemoveFile(tx, path) => {
@@ -301,7 +337,9 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             },
             FsReq::OpenDir(tx, path) => {
@@ -311,7 +349,9 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             },
             FsReq::CreateDir(tx, path, uid) => {
@@ -321,7 +361,9 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             },
             FsReq::RemoveDir(tx, path) => {
@@ -331,7 +373,9 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             },
             FsReq::UpdateInode(tx, addr, inode) => {
@@ -341,7 +385,9 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             }
             FsReq::ReadFile(tx, inode) => {
@@ -351,7 +397,9 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             },
             FsReq::WriteFile(tx, inode, data ) => {
@@ -361,7 +409,9 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             },
             FsReq::ReadDir(tx, inode) => {
@@ -371,7 +421,9 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             },
             FsReq::DirAddEntry(tx, dir_inode, entry_inode, name) => {
@@ -381,7 +433,9 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             },
             FsReq::DirRemoveEntry(tx, dir_inode, entry_inode) => {
@@ -391,27 +445,48 @@ pub fn start_fs(
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
                         };
                     },
-                    Err(e) => todo!()
+                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
+                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    }
                 }
             },
         }
     }
 }
 
-fn path_to_inode(path: &str) -> Result<u32> {
+// [PASS]
+/// ## Error
+/// 
+/// - InvalidPath
+/// - NotFound
+fn path_to_inode(mut path: &str) -> Result<u32> {
     // assume path is absolute
+
+    // root dir
+    if path == "/" {
+        return Ok(0);
+    }
+
+    // trim the '/' at the end
+    if path.ends_with('/') {
+        path = &path[..path.len()-1];
+    }
+
     let mut path_vec: Vec<&str> = path.split('/').collect();
     if path_vec.len() < 1 {
         return Err(FsError::InvalidPath);
     }
-    path_vec = path_vec.drain(0..1).collect();
+    path_vec.drain(0..1);
 
     let mut inode = 0;
     let mut path = String::from("/");
     for section in path_vec {
+        if section == "" {
+            return Err(FsError::InvalidPath);
+        }
         let dir_now = match dir::read_dir(inode) {
             Ok(v) => v,
-            Err(e) => todo!()
+            Err(e) => /**/panic!("{e:?}")
         };
         for ent in dir_now {
             if ent.name == section {
@@ -430,13 +505,8 @@ fn path_to_inode(path: &str) -> Result<u32> {
 /// `fs_tx`: sender for sending request
 pub fn superblock(fs_tx: &mut Sender<FsReq>) -> Result<superblock::Superblock> {
     let (tx, rx) = mpsc::channel();
-    if let Err(e) = fs_tx.send(FsReq::Superblock(tx)) {
-        todo!()
-    }
-    match rx.recv()? {
-        Ok(sb) => Ok(sb),
-        Err(e) => todo!()
-    }
+    fs_tx.send(FsReq::Superblock(tx))?;
+    Ok(rx.recv()??)
 }
 
 /// Get metadata of a file or a directory. Return [Metadata].
@@ -446,13 +516,8 @@ pub fn superblock(fs_tx: &mut Sender<FsReq>) -> Result<superblock::Superblock> {
 /// `path`: path to file or directory
 pub fn metadata(fs_tx: &mut Sender<FsReq>, path: &str) -> Result<metadata::Metadata> {
     let (tx, rx) = mpsc::channel();
-    if let Err(e) = fs_tx.send(FsReq::Metadata(tx, String::from(path))) {
-        todo!()
-    }
-    match rx.recv()? {
-        Ok(m) => Ok(m),
-        Err(e) => todo!()
-    }
+    fs_tx.send(FsReq::Metadata(tx, String::from(path)))?;
+    Ok(rx.recv()??)
 }
 
 /// Open a file. Return a file descriptor [Fd].
@@ -462,13 +527,8 @@ pub fn metadata(fs_tx: &mut Sender<FsReq>, path: &str) -> Result<metadata::Metad
 /// `path`: path to file
 pub fn open_file(fs_tx: &mut Sender<FsReq>, path: &str) -> Result<Fd> {
     let (tx, rx) = mpsc::channel();
-    if let Err(e) = fs_tx.send(FsReq::OpenFile(tx, String::from(path))) {
-        todo!()
-    }
-    match rx.recv()? {
-        Ok(f) => Ok(f),
-        Err(e) => todo!()
-    }
+    fs_tx.send(FsReq::OpenFile(tx, String::from(path)))?;
+    Ok(rx.recv()??)
 }
 
 /// Create a file. Return a file descriptor [Fd].
@@ -480,13 +540,8 @@ pub fn open_file(fs_tx: &mut Sender<FsReq>, path: &str) -> Result<Fd> {
 /// `uid`: creator id
 pub fn create_file(fs_tx: &mut Sender<FsReq>, path: &str, uid: u8) -> Result<Fd> {
     let (tx, rx) = mpsc::channel();
-    if let Err(e) = fs_tx.send(FsReq::CreateFile(tx, String::from(path), uid)) {
-        todo!()
-    }
-    match rx.recv()? {
-        Ok(f) => Ok(f),
-        Err(e) => todo!()
-    }
+    fs_tx.send(FsReq::CreateFile(tx, String::from(path), uid))?;
+    Ok(rx.recv()??)
 }
 
 /// Remove a file.
@@ -496,13 +551,8 @@ pub fn create_file(fs_tx: &mut Sender<FsReq>, path: &str, uid: u8) -> Result<Fd>
 /// `path`: path to file
 pub fn remove_file(fs_tx: &mut Sender<FsReq>, path: &str) -> Result<()> {
     let (tx, rx) = mpsc::channel();
-    if let Err(e) = fs_tx.send(FsReq::RemoveFile(tx, String::from(path))) {
-        todo!()
-    }
-    match rx.recv()? {
-        Ok(_) => Ok(()),
-        Err(e) => todo!()
-    }
+    fs_tx.send(FsReq::RemoveFile(tx, String::from(path)))?;
+    Ok(rx.recv()??)
 }
 
 /// Open a directory. Return a directory descriptor [Dd].
@@ -512,13 +562,8 @@ pub fn remove_file(fs_tx: &mut Sender<FsReq>, path: &str) -> Result<()> {
 /// `path`: path to directory
 pub fn open_dir(fs_tx: &mut Sender<FsReq>, path: &str) -> Result<Dd> {
     let (tx, rx) = mpsc::channel();
-    if let Err(e) = fs_tx.send(FsReq::OpenDir(tx, String::from(path))) {
-        todo!()
-    }
-    match rx.recv()? {
-        Ok(d) => Ok(d),
-        Err(e) => todo!()
-    }
+    fs_tx.send(FsReq::OpenDir(tx, String::from(path)))?;
+    Ok(rx.recv()??)
 }
 
 /// Create a directory. Return a directory descriptor [Dd].
@@ -530,13 +575,8 @@ pub fn open_dir(fs_tx: &mut Sender<FsReq>, path: &str) -> Result<Dd> {
 /// `uid`: creator id
 pub fn create_dir(fs_tx: &mut Sender<FsReq>, path: &str, uid: u8) -> Result<Dd> {
     let (tx, rx) = mpsc::channel();
-    if let Err(e) = fs_tx.send(FsReq::CreateDir(tx, String::from(path), uid)) {
-        todo!()
-    }
-    match rx.recv()? {
-        Ok(d) => Ok(d),
-        Err(e) => todo!()
-    }
+    fs_tx.send(FsReq::CreateDir(tx, String::from(path), uid))?;
+    Ok(rx.recv()??)
 }
 
 /// Remove a directory.
@@ -548,11 +588,6 @@ pub fn create_dir(fs_tx: &mut Sender<FsReq>, path: &str, uid: u8) -> Result<Dd> 
 /// `path`: path to directory
 pub fn remove_dir(fs_tx: &mut Sender<FsReq>, path: &str) -> Result<()> {
     let (tx, rx) = mpsc::channel();
-    if let Err(e) = fs_tx.send(FsReq::RemoveDir(tx, String::from(path))) {
-        todo!()
-    }
-    match rx.recv()? {
-        Ok(_) => Ok(()),
-        Err(e) => todo!()
-    }
+    fs_tx.send(FsReq::RemoveDir(tx, String::from(path)))?;
+    Ok(rx.recv()??)
 }

@@ -1,6 +1,7 @@
 // ====== ERROR ======
 
 use std::{error, fmt, result};
+use super::error::*;
 
 #[derive(Debug)]
 pub enum DiskError {
@@ -28,27 +29,26 @@ use crate::logger;
 use crate::sedes::Serialize;
 use super::{superblock, inode, data, dir};
 
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Seek, SeekFrom, Write, Read};
 
 const DISK_PATH: & 'static str = "./the_disk";
 pub const DISK_SIZE: u32 = 128 * 1024 * 1024;
 pub const BLOCK_SIZE: u32 = 1024;
-const BLOCK_COUNT: u32 = DISK_SIZE / BLOCK_SIZE;
 
 pub fn init_disk() -> Result<()> {
     match fs::metadata(DISK_PATH) {
         Ok(meta) => {
             let file_size = meta.len();
             if file_size < DISK_SIZE as u64 {
-                logger::log("Insufficient file size. Remove original file.");
+                logger::log("[FS] Insufficient file size. Remove original file.");
                 fs::remove_file(DISK_PATH)?;
                 create_disk()?;
             }
         },
         Err(e) => match e.kind() {
             io::ErrorKind::NotFound => {
-                logger::log("Disk file not found.");
+                logger::log("[FS] Disk file not found.");
                 create_disk()?;
             },
             _ => return Err(DiskError::IoErr(e))
@@ -61,58 +61,65 @@ pub fn init_disk() -> Result<()> {
         f.read_exact(&mut buf)?;
     }
     if buf[0] != 227 {
-        logger::log("Found incorrupted disk file. Remove original file.");
+        logger::log("[FS] Found incorrupted disk file. Remove original file.");
         fs::remove_file(DISK_PATH)?;
         create_disk()?;
     }
 
-    logger::log("Initialized disk.");
-    logger::log(&format!("{:?}", superblock::superblock().unwrap()));
+    logger::log("[FS] Initialized disk.");
+    logger::log(&format!("[FS] Superblock: {:?}", superblock::superblock().unwrap()));
     Ok(())
 }
 
 fn create_disk() -> Result<()> {
     {
-        let mut f = File::create(DISK_PATH)?;
+        let mut f = OpenOptions::new().write(true).create(true).truncate(false).open(DISK_PATH)?;
         f.seek(SeekFrom::Start(DISK_SIZE as u64 + 1))?;
-        f.write_all(b"\0")?;
+        f.write_all(&[1,0])?;
         f.flush()?;
     }
-    logger::log("Created disk file.");
+    logger::log("[FS] Created disk file.");
 
     // create superblock
     let buf = superblock::Superblock::new().serialize();
     write_blocks(&[(0, buf)].to_vec())?;
-    logger::log("Initialized superblock.");
-    let tmp = read_blocks(&[0].to_vec())?;
+    logger::log("[FS] Initialized superblock.");
 
     // initialize inode and data bitmap
     let buf = [0u8; BLOCK_SIZE as usize];
     write_blocks(&[(inode::BITMAP_OFFSET, buf.to_vec())].to_vec())?;
     let mut data = Vec::new();
-    for addr in (data::BITMAP_OFFSET..data::DATA_OFFSET) {
+    for addr in data::BITMAP_OFFSET..data::DATA_OFFSET {
         data.push((addr, buf.to_vec()));
     }
     write_blocks(&data)?;
-    let tmp = read_blocks(&[0].to_vec())?;
 
     // create dir: /
-    let (root_inode_addr, root_inode) = match inode::alloc_inode(0, true) {
+    let (root_inode_addr, _) = match inode::alloc_inode(0, true) {
         Ok(a) => a,
-        Err(e) => todo!()
-    };
-    if let Err(e) = inode::save_inode(root_inode_addr, &root_inode) {
-        todo!()
+        Err(e) => match e {
+            super::inode::InodeError::DiskErr(e) => return Err(e),
+            _ => panic!("{e:?}")
+        }
     };
     if let Err(e) = dir::dir_add_entry(root_inode_addr, root_inode_addr, ".") {
-        todo!()
+        match e {
+            DdError::InvalidPath => return Err(DiskError::InvalidAddr),
+            DdError::IoErr(e) => return Err(DiskError::IoErr(e)),
+            _ => panic!("{e:?}")
+        }
     }
-    logger::log("Initialized root dir.");
+
+    logger::log("[FS] Initialized root dir.");
 
     Ok(())
 }
 
 // [PASS]
+/// # Error
+/// 
+/// - InvalidAddr
+/// - IoErr
 pub fn read_blocks(addrs: &Vec<u32>) -> Result<Vec<u8>> {
     let mut v = Vec::<u8>::new();
     let mut f = File::open(DISK_PATH)?;
@@ -122,6 +129,7 @@ pub fn read_blocks(addrs: &Vec<u32>) -> Result<Vec<u8>> {
         }
         let mut buf = [0u8; 1024];
         f.seek(SeekFrom::Start((*addr * BLOCK_SIZE) as u64))?;
+        println!("[read] file stream position: {}", f.stream_position().unwrap());
         f.read_exact(&mut buf)?;
         v.append(&mut buf.to_vec())
     }
@@ -135,19 +143,23 @@ pub fn write_blocks(data: &Vec<(u32, Vec<u8>)>) -> Result<()> {
             return Err(DiskError::InvalidAddr);
         }
     }
-    let mut f = File::create(DISK_PATH)?;
+    let mut f = OpenOptions::new().write(true).truncate(false).open(DISK_PATH)?;
     for (addr, buf) in data {
         f.seek(SeekFrom::Start((*addr * BLOCK_SIZE) as u64))?;
         if buf.len() < BLOCK_SIZE as usize {
             f.write_all(&buf[..])?;
             f.write_all(b"\0")?;
+            println!("[write] file stream position: {}", f.stream_position().unwrap());
         } else {
             f.write_all(&buf[..BLOCK_SIZE as usize])?;
+            println!("[write] file stream position: {}", f.stream_position().unwrap());
         }
-        f.flush()?;
     }
     f.seek(SeekFrom::Start(DISK_SIZE as u64 + 1))?;
-    f.write_all(b"\0")?;
+    f.write_all(&[1,0])?;
+    println!("[write] file stream position: {}", f.stream_position().unwrap());
+    f.seek(SeekFrom::Start(DISK_SIZE as u64 + 1))?;
+    f.write_all(&[1,0])?;
     f.flush()?;
     Ok(())
 }

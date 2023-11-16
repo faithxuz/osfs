@@ -1,4 +1,5 @@
 use super::Context;
+use crate::fs::superblock;
 
 pub fn info(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     // get file system info

@@ -1,16 +1,14 @@
 // ====== ERROR ====== 
 
-use crate::sedes;
-use std::{error, fmt};
+use std::{error, fmt, result};
+use super::error::*;
 
 #[derive(Debug)]
 pub enum InodeError {
     NoUsableBlock,
     InvalidAddr,
     DataTooBig,
-    SedesErr(sedes::SedesError),
-    DiskErr(disk::DiskError),
-    SystemTimeErr(std::time::SystemTimeError),
+    DiskErr(DiskError),
 }
 
 impl error::Error for InodeError {}
@@ -21,24 +19,16 @@ impl fmt::Display for InodeError {
     }
 }
 
-impl From<sedes::SedesError> for InodeError {
-    fn from(e: sedes::SedesError) -> Self { Self::SedesErr(e) }
+impl From<DiskError> for InodeError {
+    fn from(e: DiskError) -> Self { Self::DiskErr(e) }
 }
 
-impl From<disk::DiskError> for InodeError {
-    fn from(e: disk::DiskError) -> Self { Self::DiskErr(e) }
-}
-
-impl From<std::time::SystemTimeError> for InodeError {
-    fn from(e: std::time::SystemTimeError) -> Self { Self::SystemTimeErr(e) }
-}
-
-type Result<T> = std::result::Result<T, InodeError>;
+type Result<T> = result::Result<T, InodeError>;
 
 // ====== INODE ======
 
 use super::utils;
-use crate::sedes::{Serialize, Deserialize, SedesError};
+use crate::sedes::{Serialize, Deserialize};
 use chrono::prelude::*;
 
 pub const BITMAP_OFFSET: u32 = 1;
@@ -73,6 +63,13 @@ impl Inode {
     pub fn new(owner: u8, is_dir: bool) -> Self {
         let mut inode = Self::default();
         inode.uid = owner;
+        if is_dir {
+            inode.mode = DIR_FLAG
+                + OWNER_RWX_FLAG.0 + OWNER_RWX_FLAG.1 + OWNER_RWX_FLAG.2
+                + OTHER_RWX_FLAG.0 + OTHER_RWX_FLAG.2;
+        } else {
+            inode.mode = OWNER_RWX_FLAG.0 + OWNER_RWX_FLAG.1 + OTHER_RWX_FLAG.0;
+        }
         inode.update_timestamp();
         inode
     }
@@ -96,6 +93,7 @@ impl Serialize for Inode {
         }
         v.append(&mut utils::u32_to_u8arr(self.indirect_block).to_vec());
         v.append(&mut utils::u32_to_u8arr(self.double_block).to_vec());
+        v.append(&mut [0u8; 14].to_vec());
         v
     }
 }
@@ -144,7 +142,7 @@ type Bitmap = BlockBitmap;
 fn get_bitmap() -> Result<Bitmap> {
     let addrs: Vec<u32> = vec![BITMAP_OFFSET];
     let mut data = disk::read_blocks(&addrs)?;
-    Ok(Bitmap::deserialize(&mut data)?)
+    Ok(Bitmap::deserialize(&mut data).unwrap())
 }
 
 // [PASS]
@@ -165,28 +163,19 @@ pub fn alloc_inode(owner: u8, is_dir: bool) -> Result<(u32, Inode)> {
         None => return Err(InodeError::NoUsableBlock)
     };
     bitmap.set_true(addr).unwrap();
-    let mut inode = Inode::default();
-    inode.uid = owner;
-    if is_dir {
-        inode.mode = DIR_FLAG
-            + OWNER_RWX_FLAG.0 + OWNER_RWX_FLAG.1 + OWNER_RWX_FLAG.2
-            + OTHER_RWX_FLAG.0 + OTHER_RWX_FLAG.2;
-    } else {
-        inode.mode = OWNER_RWX_FLAG.0 + OWNER_RWX_FLAG.1 + OTHER_RWX_FLAG.0;
-    }
-    inode.update_timestamp();
+    let inode = Inode::new(owner, is_dir);
     save_bitmap(&bitmap)?;
+    save_inode(addr, &inode)?;
     Ok((addr, inode))
 }
 
 /// ## Error
 /// 
 /// - InvalidAddr
-/// - SedesErr
 /// - DiskErr
 pub fn free_inode(addr: u32) -> Result<()> {
     let mut bitmap = get_bitmap()?;
-    if let Err(e) = bitmap.set_false(addr) {
+    if let Err(_) = bitmap.set_false(addr) {
         return Err(InodeError::InvalidAddr);
     }
     save_bitmap(&bitmap)?;
@@ -196,20 +185,19 @@ pub fn free_inode(addr: u32) -> Result<()> {
 // [PASS]
 /// ## Error
 /// 
-/// - Invalid Addr
+/// - InvalidAddr
 /// - DiskErr
-/// - SedesErr
 pub fn load_inode(addr: u32) -> Result<Inode> {
     if addr > INODE_COUNT {
         return Err(InodeError::InvalidAddr);
     }
     let block = INODE_OFFSET + addr / INODE_PER_BLOCK;
-    let pos = addr % INODE_PER_BLOCK * INODE_SIZE as u32;
+    let pos = addr % INODE_PER_BLOCK;
     let buf = disk::read_blocks(&vec![block])?;
     Ok(Inode::deserialize(&mut buf[
         pos as usize * INODE_SIZE
         ..(pos + 1) as usize * INODE_SIZE
-    ].to_vec())?)
+    ].to_vec()).unwrap())
 
 }
 
@@ -219,13 +207,14 @@ pub fn load_inode(addr: u32) -> Result<Inode> {
 /// - DiskErr
 pub fn save_inode(addr: u32, inode: &Inode) -> Result<()> {
     let block = INODE_OFFSET + addr / INODE_PER_BLOCK;
-    let pos = addr % INODE_PER_BLOCK * INODE_SIZE as u32;
+    let pos = addr % INODE_PER_BLOCK;
     let mut buf = disk::read_blocks(&vec![block])?;
+    let s_inode = inode.serialize();
     buf.splice(
         pos as usize * INODE_SIZE..(pos + 1) as usize * INODE_SIZE,
-        inode.serialize()
+        s_inode
     );
-    disk::write_blocks(&vec![(INODE_OFFSET, buf.to_vec())])?;
+    disk::write_blocks(&vec![(block, buf.to_vec())])?;
     Ok(())
 }
 
@@ -314,7 +303,11 @@ pub fn update_blocks(inode: &mut Inode, blocks: &Vec<u32>) -> Result<()> {
     if inode.indirect_block == 0 {
         inode.indirect_block = match data::alloc_blocks(1) {
             Ok(v) => *v.get(0).unwrap(),
-            Err(e) => return Err(InodeError::DataTooBig)
+            Err(e) => match e {
+                DataError::InsufficientUsableBlocks => return Err(InodeError::NoUsableBlock),
+                DataError::DiskErr(e) => return Err(InodeError::DiskErr(e)),
+                _ => panic!("{e:?}")
+            }
         };
     }
     let mut buf = Vec::<u8>::with_capacity(disk::BLOCK_SIZE as usize);
@@ -338,7 +331,11 @@ pub fn update_blocks(inode: &mut Inode, blocks: &Vec<u32>) -> Result<()> {
     if inode.double_block == 0 {
         inode.double_block = match data::alloc_blocks(1) {
             Ok(v) => *v.get(0).unwrap(),
-            Err(e) => return Err(InodeError::DataTooBig)
+            Err(e) => match e {
+                DataError::InsufficientUsableBlocks => return Err(InodeError::NoUsableBlock),
+                DataError::DiskErr(e) => return Err(InodeError::DiskErr(e)),
+                _ => panic!("{e:?}")
+            }
         };
     }
     let buf = &disk::read_blocks(&[inode.double_block].to_vec())?;
@@ -354,7 +351,11 @@ pub fn update_blocks(inode: &mut Inode, blocks: &Vec<u32>) -> Result<()> {
         if *ind_block == 0 {
             *ind_block = match data::alloc_blocks(1) {
                 Ok(v) => *v.get(0).unwrap(),
-                Err(e) => return Err(InodeError::DataTooBig)
+                Err(e) => match e {
+                    DataError::InsufficientUsableBlocks => return Err(InodeError::NoUsableBlock),
+                    DataError::DiskErr(e) => return Err(InodeError::DiskErr(e)),
+                    _ => panic!("{e:?}")
+                }
             };
         }
         let mut buf = Vec::<u8>::with_capacity(disk::BLOCK_SIZE as usize);
