@@ -40,7 +40,7 @@ use super::{Context, utils, permission};
 use crate::fs::{metadata, open_dir, open_file, create_dir, create_file};
 
 // define uasge and permission
-const USAGE: &str = "Usage: cp [-r] [-v] SOURSE DEST";
+const USAGE: &str = "Usage: cp [-r] [-v] SOURSE DEST\n";
 const PERMISSION_SRC: (bool, bool, bool) = (true, false, false);
 const PERMISSION_TGT: (bool, bool, bool) = (false, true, false);
 

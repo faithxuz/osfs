@@ -114,21 +114,21 @@ fn send(
 
     // send request
     if let Err(e) = conn.write_all(s_msg.as_bytes()) {
-        return format!("{e}");
+        return format!("{e}\n");
     }
     if let Err(e) = conn.flush() {
-        return format!("{e}");
+        return format!("{e}\n");
     }
 
     // read response
     let mut res = String::new();
     let mut reader = BufReader::new(&conn);
     if let Err(e) = reader.read_line(&mut res) {
-        return format!("{e}");
+        return format!("{e}\n");
     }
     let res: SdRes = match serde_json::from_str(&res) {
         Ok(obj) => obj,
-        Err(e) => return format!("{e}")
+        Err(e) => return format!("{e}\n")
     };
 
     // workding directory may change

@@ -125,6 +125,7 @@ impl Serialize for Entry {
             name = (*&self.name[0..NAME_LEN].to_string()).clone().into_bytes();
         } else {
             name = self.name.as_bytes().to_vec();
+            name.append(&mut [0u8; NAME_LEN][self.name.len()..].to_vec());
         }
         v.append(&mut name);
         v
@@ -139,6 +140,7 @@ impl Deserialize for Entry {
         let mut me = Self::default();
         me.inode = utils::u8arr_to_u32(&buf[0..4]);
         me.name = String::from_utf8(buf[4..].to_vec()).unwrap();
+        me.name = String::from(me.name.trim_end_matches('\0'));
         Ok(me)
     }
 }
@@ -172,7 +174,6 @@ impl Dd {
 
     /// Return a [u32] representing the virtual address of directory inode.
     pub fn inode_addr(&self) -> u32 {
-        crate::logger::log("a");
         self.inode
     }
 
@@ -187,7 +188,7 @@ impl Dd {
         self.tx.send(FsReq::ReadDir(tx, self.inode))?;
         match rx.recv()? {
             Ok(data) => Ok(data),
-            Err(e) => todo!()
+            Err(e) => return Err(DdError::NotFound)
         }
     }
 
@@ -201,7 +202,7 @@ impl Dd {
         self.tx.send(FsReq::DirAddEntry(tx, self.inode, inode, name.to_string()))?;
         match rx.recv()? {
             Ok(_) => Ok(()),
-            Err(e) => todo!()
+            Err(e) => return Err(DdError::NotFound)
         }
     }
 
@@ -213,7 +214,7 @@ impl Dd {
         self.tx.send(FsReq::DirRemoveEntry(tx, self.inode, inode))?;
         match rx.recv()? {
             Ok(_) => Ok(()),
-            Err(e) => todo!()
+            Err(e) => return Err(DdError::NotFound)
         }
     }
 }
@@ -280,7 +281,7 @@ pub fn create_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str, 
         Some(n) => n,
         None => return Err(DdError::InvalidPath)
     });
-    let parent_path = path_vec.join("/");
+    let parent_path = String::from("/") + &path_vec.join("/");
     let parent_dd = match open_dir(tx.clone(), fd_table.clone(), &parent_path) {
         Ok(d) => d,
         Err(e) => match e {
@@ -298,6 +299,9 @@ pub fn create_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str, 
 
     // add parent/new
     dir_add_entry(parent_dd.inode_addr(), inode.0, &dir_name)?;
+
+    // create dir file
+    file::create_file(tx.clone(), fd_table.clone(), path, uid)?;
 
     // add new/.
     dir_add_entry(inode.0, inode.0, ".")?;
@@ -381,7 +385,11 @@ pub fn read_dir(dir_inode: u32) -> Result<Vec<Entry>> {
     let size = data.len() / ENTRY_SIZE;
     let mut v = Vec::<Entry>::with_capacity(size);
     for i in 0..size {
-        v.push(Entry::deserialize(&mut data[i*ENTRY_SIZE..(i+1)*ENTRY_SIZE].to_vec()).unwrap());
+        let ent = Entry::deserialize(&mut data[i*ENTRY_SIZE..(i+1)*ENTRY_SIZE].to_vec()).unwrap();
+        if ent.name == "" {
+            break
+        }
+        v.push(ent);
     }
     logger::log(&format!("[FS] Read directory: [dir_inode_addr] {dir_inode}"));
     Ok(v)
@@ -421,7 +429,7 @@ pub fn dir_remove_entry(dir_inode: u32, entry_inode: u32) -> Result<()> {
     let mut v = read_dir(dir_inode)?;
     for (i, ent) in v.iter().enumerate() {
         if ent.inode == entry_inode {
-            v = v.drain(i..i+1).collect();
+            v.drain(i..i+1);
             let mut data = Vec::<u8>::with_capacity(v.len() * ENTRY_SIZE);
             for ent in v {
                 data.append(&mut ent.serialize());

@@ -2,7 +2,7 @@ use getopts::Options;
 use crate::fs::metadata;
 use super::{Context, utils, permission};
 
-const USAGE: &str = "Usage: cd <directory>";
+const USAGE: &str = "Usage: cd <directory>\n";
 const PERMISSION: (bool, bool, bool) = (false, false, true);
 
 pub fn cd(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
@@ -12,6 +12,7 @@ pub fn cd(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
 
     // define params: none
     let mut opts = Options::new();
+    opts.optflag("h", "", "Help");
 
     // parse args
     let matches = match opts.parse(&args) {
@@ -21,6 +22,10 @@ pub fn cd(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         }
     };
     
+    if matches.opt_present("h") {
+        return (ctx, String::from(USAGE));
+    }
+
     // support only one path
     if matches.free.len() > 1 {
         return (ctx, String::from("Too many arguments\n"));

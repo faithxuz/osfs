@@ -123,7 +123,7 @@ impl Fd {
         self.tx.send(FsReq::ReadFile(tx, self.inode))?;
         match rx.recv()? {
             Ok(data) => Ok(data),
-            Err(e) => todo!()
+            Err(e) => return Err(FdError::NotFound)
         }
     }
 
@@ -135,7 +135,7 @@ impl Fd {
         self.tx.send(FsReq::WriteFile(tx, self.inode, data.clone()))?;
         match rx.recv()? {
             Ok(_) => Ok(()),
-            Err(e) => todo!()
+            Err(e) => return Err(FdError::NotFound)
         }
     }
 }
@@ -200,7 +200,7 @@ pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str,
         Err(e) => match e {
             DdError::NotFound => return Err(FdError::ParentNotFound),
             DdError::NotDir => return Err(FdError::ParentNotDir),
-            _ => todo!()
+            _ => /**/panic!("{e:?}")
         }
     };
     match metadata(tx.clone(), path) {
@@ -231,10 +231,10 @@ pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str,
     let blocks = data::alloc_blocks(1)?;
 
     // write a EOF
-    let data = [(match blocks.get(0) {
-        Some(a) => *a,
-        None => todo!()
-    }, [0u8].to_vec())].to_vec();
+    let data = [(
+        *blocks.get(0).unwrap(),
+        [0u8].to_vec()
+    )].to_vec();
     disk::write_blocks(&data)?;
 
     // update and save inode
@@ -328,7 +328,7 @@ pub fn read_file(inode: u32) -> Result<Vec<u8>> {
             break
         }
     }
-    buf = buf.drain(end_at..).collect();
+    buf.drain(end_at..);
     
     Ok(buf)
 }

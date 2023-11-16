@@ -93,6 +93,7 @@ impl Serialize for Inode {
         }
         v.append(&mut utils::u32_to_u8arr(self.indirect_block).to_vec());
         v.append(&mut utils::u32_to_u8arr(self.double_block).to_vec());
+        v.append(&mut [0u8; 14].to_vec());
         v
     }
 }
@@ -191,7 +192,7 @@ pub fn load_inode(addr: u32) -> Result<Inode> {
         return Err(InodeError::InvalidAddr);
     }
     let block = INODE_OFFSET + addr / INODE_PER_BLOCK;
-    let pos = addr % INODE_PER_BLOCK * INODE_SIZE as u32;
+    let pos = addr % INODE_PER_BLOCK;
     let buf = disk::read_blocks(&vec![block])?;
     Ok(Inode::deserialize(&mut buf[
         pos as usize * INODE_SIZE
@@ -206,13 +207,14 @@ pub fn load_inode(addr: u32) -> Result<Inode> {
 /// - DiskErr
 pub fn save_inode(addr: u32, inode: &Inode) -> Result<()> {
     let block = INODE_OFFSET + addr / INODE_PER_BLOCK;
-    let pos = addr % INODE_PER_BLOCK * INODE_SIZE as u32;
+    let pos = addr % INODE_PER_BLOCK;
     let mut buf = disk::read_blocks(&vec![block])?;
+    let s_inode = inode.serialize();
     buf.splice(
         pos as usize * INODE_SIZE..(pos + 1) as usize * INODE_SIZE,
-        inode.serialize()
+        s_inode
     );
-    disk::write_blocks(&vec![(INODE_OFFSET, buf.to_vec())])?;
+    disk::write_blocks(&vec![(block, buf.to_vec())])?;
     Ok(())
 }
 

@@ -20,7 +20,7 @@ use super::{Context, utils, permission};
 use crate::fs::{metadata, open_file};
 
 // define uasge and permission
-const USAGE: &str = "Usage: cat [-nb] <file1> <file2> ...";
+const USAGE: &str = "Usage: cat [-nb] <file1> <file2> ...\n";
 const PERMISSION: (bool, bool, bool) = (true, false, false);
 
 pub fn cat(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
@@ -30,6 +30,7 @@ pub fn cat(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
 
     // define params
     let mut opts = Options::new();
+    opts.optflag("h", "", "Help");
     opts.optflag("n", "", "Number all output lines");
     opts.optflag("b", "", "Number non-empty output lines");
 
@@ -40,6 +41,10 @@ pub fn cat(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
             return (ctx, f.to_string());
         }
     };
+
+    if matches.opt_present("h") {
+        return (ctx, String::from(USAGE));
+    }
 
     if matches.free.is_empty() {
         return (ctx, String::from(USAGE));

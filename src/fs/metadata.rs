@@ -131,7 +131,7 @@ impl Metadata {
                 logger::log(&format!("[FS] Update permission for inode {}.", self.addr));
                 Ok(())
             },
-            Err(e) => todo!()
+            Err(e) => return Err(MetadataError::NotFound)
         }
     }
 
@@ -154,7 +154,7 @@ impl Metadata {
                 logger::log(&format!("[FS] Update timestamp for inode {}.", self.addr));
                 Ok(())
             },
-            Err(e) => todo!()
+            Err(e) => return Err(MetadataError::NotFound)
         }
     }
 }
@@ -164,6 +164,7 @@ impl Metadata {
 use super::FsError;
 use super::path_to_inode;
 
+// [PASS]
 /// ## Error
 /// 
 /// - InvalidAddr

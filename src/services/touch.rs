@@ -12,9 +12,9 @@
  */
 use getopts::Options;
 use super::{Context, utils, permission};
-use crate::fs::{metadata, create_dir, create_file};
+use crate::fs::{metadata, create_file};
 
-const USAGE: &str = "Usage: touch <name1> <name2> ...";
+const USAGE: &str = "Usage: touch <name1> <name2> ...\n";
 const PERMISSION: (bool, bool, bool) = (false, true, false);
 
 // split parent path and sub path
@@ -37,7 +37,8 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     }
 
     // define params: none
-    let opts = Options::new();
+    let mut opts = Options::new();
+    opts.optflag("h", "", "Help");
 
     // parse args
     let matches = match opts.parse(&args) {
@@ -46,6 +47,10 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
             return (ctx, f.to_string());
         }
     };
+
+    if matches.opt_present("h") {
+        return (ctx, String::from(USAGE));
+    }
 
     if matches.free.is_empty() {
         return (ctx, String::from(USAGE));

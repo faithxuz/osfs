@@ -25,7 +25,7 @@ use super::{Context, utils, permission};
 use crate::fs::{metadata, open_dir, remove_dir, remove_file};
 
 // define uasge and permission
-const USAGE: &str = "Usage: rm [-r] <name1> <name2> ...";
+const USAGE: &str = "Usage: rm [-r] <name1> <name2> ...\n";
 const PERMISSION: (bool, bool, bool) = (false, true, false);
 
 fn remove_dir_recursively(ctx: &mut Context, dir_path: &str) -> String {
@@ -91,6 +91,7 @@ pub fn rm(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
 
     // define params
     let mut opts = Options::new();
+    opts.optflag("h", "", "Help");
     opts.optflag("r", "", "Remove directories and their contents recursively");
 
     // parse args
@@ -100,6 +101,10 @@ pub fn rm(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
             return (ctx, f.to_string());
         }
     };
+
+    if matches.opt_present("h") {
+        return (ctx, String::from(USAGE));
+    }
 
     if matches.free.is_empty() {
         return (ctx, String::from(USAGE));

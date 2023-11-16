@@ -1,12 +1,18 @@
 // convert path to absolute path
-pub fn convert_path_to_abs(wd: &str, path: &str) -> Result<String, & 'static str> {
+pub fn convert_path_to_abs(mut wd: &str, path: &str) -> Result<String, & 'static str> {
+    // assume wd is an absolute path
+
     if path.starts_with("/") {
         // already been abs path
         return Ok(String::from(path));
     }
 
     // split working dir and path dir
+    if wd.ends_with('/') {
+        wd = &wd[..wd.len()-1];
+    }
     let mut wd_vec: Vec<&str> = wd.split('/').collect();
+    wd_vec.drain(0..1);
     let mut path_vec: Vec<&str> = path.split('/').collect();
 
     loop {
@@ -22,7 +28,7 @@ pub fn convert_path_to_abs(wd: &str, path: &str) -> Result<String, & 'static str
         } else if tmp == ".." {
             match wd_vec.pop() {
                 Some(_) => (),
-                None => todo!() // ERR
+                None => return Err("Invalid path!")
             };
             path_vec.drain(0..1);
         } else {
@@ -31,13 +37,17 @@ pub fn convert_path_to_abs(wd: &str, path: &str) -> Result<String, & 'static str
     }
 
     let a = wd_vec.join("/");
-    let mut b = path_vec.join("/");
-
-    // delete the last '/'
-    if b.ends_with('/') {
-        b.pop();
-    }
+    let b = path_vec.join("/");
 
     // regroup
-    return Ok(String::from(a + "/" + &b));
+    let mut str = String::from("/") + &a;
+
+    if b.len() > 0 {
+        if !str.ends_with('/') {
+            str += "/";
+        }
+        str += &b;
+    }
+
+    Ok(str)
 }

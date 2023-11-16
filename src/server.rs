@@ -94,8 +94,7 @@ pub fn route(fs_tx: mpsc::Sender<fs::FsReq>, mut stream: TcpStream, map: Handler
             ));
             let ctx = services::Context { uid: req.uid, wd: req.wd, tx: fs_tx.clone() };
             let args: Vec<&str> = req.args.iter().map(|s| s.as_str()).collect();
-            // let (ctx, s) = handler(ctx, args);
-            let s = String::from("test\n");
+            let (ctx, s) = handler(ctx, args);
 
             // return result as json: SdRes
             let res = SdRes { wd: ctx.wd, result: s };

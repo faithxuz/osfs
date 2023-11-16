@@ -1,6 +1,7 @@
 // ====== ERROR ======
 
 use std::{error, fmt, result};
+use super::error::*;
 
 #[derive(Debug)]
 pub enum DiskError {
@@ -102,7 +103,11 @@ fn create_disk() -> Result<()> {
         }
     };
     if let Err(e) = dir::dir_add_entry(root_inode_addr, root_inode_addr, ".") {
-        todo!()
+        match e {
+            DdError::InvalidPath => return Err(DiskError::InvalidAddr),
+            DdError::IoErr(e) => return Err(DiskError::IoErr(e)),
+            _ => panic!("{e:?}")
+        }
     }
 
     logger::log("[FS] Initialized root dir.");
@@ -124,6 +129,7 @@ pub fn read_blocks(addrs: &Vec<u32>) -> Result<Vec<u8>> {
         }
         let mut buf = [0u8; 1024];
         f.seek(SeekFrom::Start((*addr * BLOCK_SIZE) as u64))?;
+        println!("[read] file stream position: {}", f.stream_position().unwrap());
         f.read_exact(&mut buf)?;
         v.append(&mut buf.to_vec())
     }
@@ -137,17 +143,21 @@ pub fn write_blocks(data: &Vec<(u32, Vec<u8>)>) -> Result<()> {
             return Err(DiskError::InvalidAddr);
         }
     }
-    let mut f = OpenOptions::new().write(true).create(true).truncate(false).open(DISK_PATH)?;
+    let mut f = OpenOptions::new().write(true).truncate(false).open(DISK_PATH)?;
     for (addr, buf) in data {
         f.seek(SeekFrom::Start((*addr * BLOCK_SIZE) as u64))?;
         if buf.len() < BLOCK_SIZE as usize {
             f.write_all(&buf[..])?;
             f.write_all(b"\0")?;
+            println!("[write] file stream position: {}", f.stream_position().unwrap());
         } else {
             f.write_all(&buf[..BLOCK_SIZE as usize])?;
+            println!("[write] file stream position: {}", f.stream_position().unwrap());
         }
-        f.flush()?;
     }
+    f.seek(SeekFrom::Start(DISK_SIZE as u64 + 1))?;
+    f.write_all(&[1,0])?;
+    println!("[write] file stream position: {}", f.stream_position().unwrap());
     f.seek(SeekFrom::Start(DISK_SIZE as u64 + 1))?;
     f.write_all(&[1,0])?;
     f.flush()?;
