@@ -74,7 +74,7 @@ fn copy(ctx: &mut Context, src_path: &str, tgt_path: &str, copy_dir: bool, verbo
             Err(e) => return format!("Cannot create directory: '{}'\n", tgt_path),
         };
 
-        // get sub entrys of source dir
+        // get sub entris of source dir
         let mut src_dd = match open_dir(&mut ctx.tx, &src_path) {
             Ok(dd) => dd,
             Err(e) => return format!("Cannot open directory: '{}'\n", src_path),
@@ -84,7 +84,7 @@ fn copy(ctx: &mut Context, src_path: &str, tgt_path: &str, copy_dir: bool, verbo
             Err(e) => return format!("Cannot read file: '{}'\n", src_path),
         };
         
-        // iterate entry in sub entrys
+        // iterate entry in sub entris
         for sub_entry in src_vec {
             // skip parent dir and itself
             if sub_entry.name == ".." || sub_entry.name == "." {

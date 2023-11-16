@@ -2,6 +2,7 @@ use getopts::Options;
 use crate::fs::metadata;
 use super::{Context, utils, permission};
 
+// define uasge and permission
 const USAGE: &str = "Usage: cd <directory>";
 const PERMISSION: (bool, bool, bool) = (false, false, true);
 

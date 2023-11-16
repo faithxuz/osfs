@@ -117,5 +117,6 @@ pub fn cat(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         // convert output vector to string
         return_str += &String::from_utf8_lossy(&output_vec).into_owned();
     }
+
     (ctx, return_str)
 }

@@ -31,7 +31,7 @@ const PERMISSION: (bool, bool, bool) = (false, true, false);
 fn remove_dir_recursively(ctx: &mut Context, dir_path: &str) -> String {
     let return_str = String::new();
 
-    // get sub entrys of dir
+    // get sub entris of dir
     let mut dir_dd = match open_dir(&mut ctx.tx, &dir_path) {
         Ok(m) => m,
         Err(e) => return format!("Cannot find directory '{}'\n", dir_path),
@@ -41,7 +41,7 @@ fn remove_dir_recursively(ctx: &mut Context, dir_path: &str) -> String {
         Err(e) => return format!("Cannot read directory '{}'\n", dir_path),
     };
 
-    // iterate entry in sub entrys
+    // iterate entry in sub entris
     for sub_entry in vec {
         // skip parent dir and itself
         if sub_entry.name == ".." || sub_entry.name == "." {

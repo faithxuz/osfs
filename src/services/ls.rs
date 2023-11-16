@@ -98,7 +98,7 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
 
         // if path is a dir
         if meta.is_dir() {
-            // get sub entrys of path
+            // get sub entris of path
             let mut new_dd = match open_dir(&mut ctx.tx, &new_path) {
                 Ok(dd) => dd,
                 Err(e) => return (ctx, format!("Cannot open directory: '{}'\n", path)),
@@ -108,7 +108,7 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                 Err(e) => return (ctx, format!("Cannot read directory: '{}'\n", path)),
             };
 
-            // iterate entry in sub entrys
+            // iterate entry in sub entris
             for sub_entry in new_vec {
                 // get sub path
                 let parent_path = new_path.clone();
