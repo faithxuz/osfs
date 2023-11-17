@@ -174,18 +174,16 @@ pub fn open_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) -
 
     // add into fd table
     let mut lock = utils::mutex_lock(fd_table.lock());
-    match lock.get_file(inode_addr) {
-        Ok(opt) => if let None = opt {
-            lock.add_file(inode_addr, &inode).unwrap();
-        },
+    let fd = match lock.get_file(tx.clone(), inode_addr, fd_table.clone()) {
+        Ok(f) => f,
         Err(e) => match e {
-            FsError::NotFileButDir => return Err(FdError::FileIncorrupted),
+            FsError::NotDirButFile => return Err(FdError::NotFile),
             _ => panic!("{e:?}")
         }
-    }
+    };
 
     logger::log(&format!("[FS] Open file: {path}"));
-    Ok(Fd::new(inode_addr, metadata, tx, fd_table.clone()))
+    Ok(fd)
 }
 
 pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str, uid: u8) -> Result<Fd> {
@@ -243,10 +241,16 @@ pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str,
 
     // add into fd table
     let mut lock = utils::mutex_lock(fd_table.lock());
-    lock.add_file(inode.0, &inode.1).unwrap();
+    let fd = match lock.get_file(tx.clone(), inode.0, fd_table.clone()) {
+        Ok(f) => f,
+        Err(e) => match e {
+            FsError::NotDirButFile => return Err(FdError::NotFile),
+            _ => panic!("{e:?}")
+        }
+    };
 
     logger::log(&format!("[FS] Create file by user{uid}: {path}"));
-    Ok(Fd::new(inode.0, metadata, tx.clone(), fd_table.clone()))
+    Ok(fd)
 }
 
 /// ## Error
@@ -275,11 +279,9 @@ pub fn remove_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str)
     }
 
     let mut lock = utils::mutex_lock(fd_table.lock());
-    if let Ok(_) = lock.get_dir(inode_addr) {
-        lock.try_drop(inode_addr);
+    if let Some(_) = lock.check(inode_addr) {
         return Err(FdError::FileOccupied);
     }
-    lock.try_drop(inode_addr);
 
     let mut path_vec: Vec<&str> = path.split('/').collect();
     path_vec.drain(0..1);

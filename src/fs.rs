@@ -22,6 +22,8 @@ mod error {
     pub use super::super::sedes::SedesError;
 }
 
+use error::*;
+
 pub use metadata::{Metadata, MetadataError, Rwx};
 pub use file::{Fd, FdError};
 pub use dir::{Dd, DdError, Entry as DirEntry};
@@ -71,6 +73,15 @@ impl From<mpsc::SendError<FsReq>> for FsError {
 
 impl From<mpsc::RecvError> for FsError {
     fn from(e: mpsc::RecvError) -> Self { Self::RecvErr(format!("{e:?}")) }
+}
+
+impl FsError {
+    fn DiskErr(e: DiskError) -> Self {
+        match e {
+            DiskError::InvalidAddr => Self::InvalidPath,
+            DiskError::IoErr(_) => Self::InnerError
+        }
+    }
 }
 
 type Result<T> = result::Result<T, FsError>;
@@ -203,59 +214,84 @@ impl FdTable {
     /// ## Error
     /// 
     /// - NotFileButDir
-    pub fn add_file(&mut self, inode_addr: u32, inode: &inode::Inode) -> Result<()> {
-        if inode.mode & inode::DIR_FLAG > 0 {
-            return Err(FsError::NotFileButDir)
-        }
+    fn add_file(&mut self, inode_addr: u32, inode: &inode::Inode) {
         self.data.insert(inode_addr, FdTableEntry {
-            count: 0, is_dir: false
+            count: 1, is_dir: false
         });
-        Ok(())
     }
 
     /// ## Error
     /// 
     /// - NotDirButFile
-    pub fn add_dir(&mut self, inode_addr: u32, inode: &inode::Inode) -> Result<()> {
-        if inode.mode & inode::DIR_FLAG == 0 {
-            return Err(FsError::NotDirButFile)
-        }
+    fn add_dir(&mut self, inode_addr: u32, inode: &inode::Inode) {
         self.data.insert(inode_addr, FdTableEntry{
-            count: 0, is_dir: true
+            count: 1, is_dir: true
         });
-        Ok(())
+    }
+
+    pub fn check(&self, inode_addr: u32) -> Option<()> {
+        match self.data.get(&inode_addr) {
+            Some(_) => Some(()),
+            None => None
+        }
     }
 
     /// ## Error
     /// 
     /// - NotFileButDir
-    pub fn get_file(&mut self, inode: u32) -> Result<Option<()>> {
-        match self.data.get_mut(&inode) {
-            Some(ent) => {
-                if ent.is_dir {
-                    return Err(FsError::NotFileButDir);
-                }
-                ent.count += 1;
-                Ok(Some(()))
-            },
-            None => Ok(None)
+    pub fn get_file(&mut self, tx: Sender<FsReq>, inode_addr: u32, table_arc: Arc<Mutex<Self>>) -> Result<Fd> {
+        let inode = match inode::load_inode(inode_addr) {
+            Ok(i) => i,
+            Err(e) => match e {
+                error::InodeError::InvalidAddr => return Err(FsError::NotFound),
+                error::InodeError::DiskErr(e) => return Err(FsError::DiskErr(e)),
+                _ => panic!("{e:?}")
+            }
+        };
+        let metadata = Metadata::new(inode_addr, inode, tx.clone());
+        if metadata.is_dir() {
+            return Err(FsError::NotFileButDir);
         }
-    }
 
-    /// ## Error
-    /// 
-    /// - NotDirButFile
-    pub fn get_dir(&mut self, inode: u32) -> Result<Option<()>> {
-        match self.data.get_mut(&inode) {
+        match self.data.get_mut(&inode_addr) {
             Some(ent) => {
                 if !ent.is_dir {
                     return Err(FsError::NotFileButDir);
                 }
                 ent.count += 1;
-                Ok(Some(()))
-            },
-            None => Ok(None)
+            }
+            None => self.add_file(inode_addr, &inode)
         }
+        Ok(Fd::new(inode_addr, metadata, tx, table_arc))
+    }
+
+    /// ## Error
+    /// 
+    /// - NotDirButFile
+    pub fn get_dir(&mut self, tx: Sender<FsReq>, inode_addr: u32, table_arc: Arc<Mutex<Self>>) -> Result<Dd> {
+        let inode = match inode::load_inode(inode_addr) {
+            Ok(i) => i,
+            Err(e) => match e {
+                error::InodeError::InvalidAddr => return Err(FsError::NotFound),
+                error::InodeError::DiskErr(e) => return Err(FsError::DiskErr(e)),
+                _ => panic!("{e:?}")
+            }
+        };
+        let metadata = Metadata::new(inode_addr, inode, tx.clone());
+        if !metadata.is_dir() {
+            return Err(FsError::NotDirButFile);
+        }
+
+        match self.data.get_mut(&inode_addr) {
+            Some(ent) => {
+                if !ent.is_dir {
+                    return Err(FsError::NotDirButFile);
+                }
+                ent.count += 1;
+            }
+            None => self.add_dir(inode_addr, &inode)
+        }
+        Ok(Dd::new(inode_addr, metadata, tx, table_arc))
     }
 }
 

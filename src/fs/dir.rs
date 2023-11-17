@@ -255,15 +255,13 @@ pub fn open_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) ->
 
     // add into fd table
     let mut lock = utils::mutex_lock(fd_table.lock());
-    match lock.get_dir(inode_addr) {
-        Ok(opt) => if let None = opt {
-            lock.add_dir(inode_addr, &inode).unwrap();
-        },
+    let dd = match lock.get_dir(tx.clone(), inode_addr, fd_table.clone()) {
+        Ok(d) => d,
         Err(e) => match e {
-            FsError::NotDirButFile => return Err(DdError::DirIncorrupted),
+            FsError::NotDirButFile => return Err(DdError::NotDir),
             _ => panic!("{e:?}")
         }
-    }
+    };
 
     logger::log(&format!("[FS] Open directory: {path}"));
     Ok(Dd::new(inode_addr, metadata, tx, fd_table.clone()))
@@ -324,10 +322,16 @@ pub fn create_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str, 
 
     // add into fd table
     let mut lock = utils::mutex_lock(fd_table.lock());
-    lock.add_dir(inode.0, &inode.1).unwrap();
+    let dd = match lock.get_dir(tx.clone(), inode.0, fd_table.clone()) {
+        Ok(d) => d,
+        Err(e) => match e {
+            FsError::NotDirButFile => return Err(DdError::NotDir),
+            _ => panic!("{e:?}")
+        }
+    };
 
     logger::log(&format!("[FS] Create directory by user{uid}: {path}"));
-    Ok(Dd::new(inode.0, metadata, tx.clone(), fd_table.clone()))
+    Ok(dd)
 }
 
 /// !!!NOTE!!!: will NOT remove sub-file or sub-dir!
@@ -358,7 +362,7 @@ pub fn remove_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) 
     }
 
     let mut lock = utils::mutex_lock(fd_table.lock());
-    if let Ok(_) = lock.get_dir(inode_addr) {
+    if let Some(_) = lock.check(inode_addr) {
         return Err(DdError::DirOccupied);
     }
 
