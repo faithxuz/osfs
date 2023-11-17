@@ -1,3 +1,4 @@
+ // [PASS]
  /*
  * iterate path in paths:
  *     if path exists
@@ -12,70 +13,11 @@
  */
 use getopts::Options;
 use super::{Context, utils, permission};
-use crate::fs::{metadata, create_dir};
+use crate::fs::{metadata, create_dir, FsError};
 
 // define uasge and permission
 const USAGE: &str = "Usage: mkdir [-p] [-v] <directory1> <directory2> ...\n";
 const PERMISSION: (bool, bool, bool) = (false, true, false);
-
-// split parent path and sub path
-fn split_path(path: &str) -> (&str, &str) {
-    // split at the last '/' or '\'
-    if let Some(index) = path.rfind('/') {
-        let (parent_path, sub_path) = path.split_at(index);
-        (&parent_path[..index], &sub_path[1..])
-    } else if let Some(index) = path.rfind('\\') {
-        let (parent_path, sub_path) = path.split_at(index);
-        (&parent_path[..index], &sub_path[1..])
-    } else {
-        ("./", &path)
-    }
-}
-
-// create dir layer by layer
-fn create_nested_dir(ctx: &mut Context, path: &str, verbose: bool) -> String {
-    let mut return_str = String::new();
-
-    // split path with '/'
-    let path_split: Vec<&str> = path.split('/').collect();
-    // current path
-    let mut current_path = String::new();
-
-    // iterate dir in splited path
-    for dir in path_split {
-        // add dir to current path
-        current_path.push('/');
-        current_path.push_str(dir);
-
-        // if current path is a valid path
-        if !current_path.is_empty() && !current_path.ends_with('/') {
-            match metadata(&mut ctx.tx, &current_path) {
-                Ok(m) => {
-                    // check permission
-                    let rwx = permission::check_permission(ctx.uid, &m, PERMISSION);
-                    if !rwx {
-                        return_str += &format!("Permission denied\n");
-                        break;
-                    }
-                }
-                Err(e) => {
-                    // doesn\"t exist: create dir
-                    match create_dir(&mut ctx.tx, &current_path, ctx.uid) {
-                        Ok(_) => {
-                            // add detailed info
-                            if verbose {
-                                return_str += &format!("mkdir: created directory \"{}\"\n", current_path);
-                            }
-                        },
-                        Err(e) => return_str += &format!("Cannot create directory \"{}\"\n", current_path),
-                    }
-                }
-            }
-        }
-    }
-
-    return_str
-}
 
 pub fn mkdir(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     if args.len() < 1 {
@@ -162,4 +104,69 @@ pub fn mkdir(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     }
 
     (ctx, return_str)
+}
+
+// split parent path and sub path
+fn split_path(path: &str) -> (&str, &str) {
+    // split at the last '/' or '\'
+    if let Some(index) = path.rfind('/') {
+        let (parent_path, sub_path) = path.split_at(index);
+        (&parent_path[..index], &sub_path[1..])
+    } else if let Some(index) = path.rfind('\\') {
+        let (parent_path, sub_path) = path.split_at(index);
+        (&parent_path[..index], &sub_path[1..])
+    } else {
+        ("./", &path)
+    }
+}
+
+// create dir layer by layer
+fn create_nested_dir(ctx: &mut Context, path: &str, verbose: bool) -> String {
+    let mut return_str = String::new();
+
+    // split path with '/'
+    let mut path_split: Vec<&str> = path.split('/').collect();
+    path_split.drain(0..1);
+    // current path
+    let mut current_path = String::new();
+
+    // iterate dir in splited path
+    for dir in path_split {
+        if dir == "" {
+            return_str += &format!("Invalid path \"{path}\"\n");
+            break;
+        }
+
+        // add dir to current path
+        current_path.push('/');
+        current_path += dir;
+
+        // if current path is a valid path
+        if !current_path.is_empty() && !current_path.ends_with('/') {
+            match metadata(&mut ctx.tx, &current_path) {
+                Ok(m) => {
+                    // check permission
+                    let rwx = permission::check_permission(ctx.uid, &m, PERMISSION);
+                    if !rwx {
+                        return_str += &format!("Permission denied\n");
+                        break;
+                    }
+                }
+                Err(e) => {
+                    // doesn\"t exist: create dir
+                    match create_dir(&mut ctx.tx, &current_path, ctx.uid) {
+                        Ok(_) => {
+                            // add detailed info
+                            if verbose {
+                                return_str += &format!("mkdir: created directory \"{}\"\n", current_path);
+                            }
+                        },
+                        Err(e) => return_str += &format!("Cannot create directory \"{}\"\n", current_path),
+                    }
+                }
+            }
+        }
+    }
+
+    return_str
 }

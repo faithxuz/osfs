@@ -1,3 +1,4 @@
+ // [PASS]
  /*
  * iterate path in paths:
  *     if path exists
@@ -16,20 +17,6 @@ use crate::fs::{metadata, create_file};
 
 const USAGE: &str = "Usage: touch <name1> <name2> ...\n";
 const PERMISSION: (bool, bool, bool) = (false, true, false);
-
-// split parent path and sub path
-fn split_path(path: &str) -> (&str, &str) {
-    // split at the last '/' or '\'
-    if let Some(index) = path.rfind('/') {
-        let (parent_path, sub_path) = path.split_at(index);
-        (&parent_path[..index], &sub_path[1..])
-    } else if let Some(index) = path.rfind('\\') {
-        let (parent_path, sub_path) = path.split_at(index);
-        (&parent_path[..index], &sub_path[1..])
-    } else {
-        ("./\n", &path)
-    }
-}
 
 pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     if args.len() < 1 {
@@ -77,7 +64,7 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         }
 
         // split path
-        let (parent_path, sub_path) = split_path(&new_path);
+        let (parent_path, _) = utils::split_path(&new_path);
 
         match metadata(&mut ctx.tx, &parent_path) {
             Ok(m) => {

@@ -129,7 +129,6 @@ pub fn read_blocks(addrs: &Vec<u32>) -> Result<Vec<u8>> {
         }
         let mut buf = [0u8; 1024];
         f.seek(SeekFrom::Start((*addr * BLOCK_SIZE) as u64))?;
-        println!("[read] file stream position: {}", f.stream_position().unwrap());
         f.read_exact(&mut buf)?;
         v.append(&mut buf.to_vec())
     }
@@ -149,15 +148,12 @@ pub fn write_blocks(data: &Vec<(u32, Vec<u8>)>) -> Result<()> {
         if buf.len() < BLOCK_SIZE as usize {
             f.write_all(&buf[..])?;
             f.write_all(b"\0")?;
-            println!("[write] file stream position: {}", f.stream_position().unwrap());
         } else {
             f.write_all(&buf[..BLOCK_SIZE as usize])?;
-            println!("[write] file stream position: {}", f.stream_position().unwrap());
         }
     }
     f.seek(SeekFrom::Start(DISK_SIZE as u64 + 1))?;
     f.write_all(&[1,0])?;
-    println!("[write] file stream position: {}", f.stream_position().unwrap());
     f.seek(SeekFrom::Start(DISK_SIZE as u64 + 1))?;
     f.write_all(&[1,0])?;
     f.flush()?;

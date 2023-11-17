@@ -32,10 +32,12 @@ use std::{fmt, result, sync::mpsc};
 
 #[derive(Debug)]
 pub enum FsError {
+    InnerError,
     InvalidPath,
     NotFound,
     NotFileButDir,
     NotDirButFile,
+    Exists,
     MetadataErr(MetadataError),
     FileErr(FdError),
     DirErr(DdError),
@@ -356,13 +358,13 @@ pub fn start_fs(
             },
             FsReq::CreateDir(tx, path, uid) => {
                 match dir::create_dir(self_tx.clone(), fd_table.clone(), &path, uid) {
-                    Ok(d) => {
-                        if let Err(e) = tx.send(Ok(d)) {
+                    Ok(d) => if let Err(e) = tx.send(Ok(d)) {
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
                     },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
+                    Err(e) => match e {
+                        DdError::InvalidPath => { tx.send(Err(FsError::InvalidPath)).unwrap(); },
+                        DdError::DirExists => { tx.send(Err(FsError::Exists)).unwrap(); },
+                        _ => { tx.send(Err(FsError::InnerError)).unwrap(); }
                     }
                 }
             },
@@ -479,23 +481,29 @@ fn path_to_inode(mut path: &str) -> Result<u32> {
     path_vec.drain(0..1);
 
     let mut inode = 0;
-    let mut path = String::from("/");
     for section in path_vec {
         if section == "" {
             return Err(FsError::InvalidPath);
         }
         let dir_now = match dir::read_dir(inode) {
             Ok(v) => v,
-            Err(e) => /**/panic!("{e:?}")
+            Err(e) => match e {
+                DdError::NotDir => return Err(FsError::NotFound),
+                DdError::NotFound => return Err(FsError::NotFound),
+                _ => panic!("{e:?}")
+            }
         };
+        let mut flag = false;
         for ent in dir_now {
             if ent.name == section {
                 inode = ent.inode;
-                path = path + section + "/";
-                continue
+                flag = true;
+                break
             }
         }
-        return Err(FsError::NotFound);
+        if !flag {
+            return Err(FsError::NotFound);
+        }
     }
     Ok(inode)
 }

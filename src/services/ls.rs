@@ -1,3 +1,4 @@
+ // [PASS]
  /*
  * iterate path in paths:
  *     if path doesn't exist
@@ -125,7 +126,7 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                 let sub_meta = match metadata(&mut ctx.tx, &sub_path) {
                     Ok(m) => m,
                     Err(e) => {
-                        return_str += &format!("Connot find '{}'\n", &sub_path);
+                        return_str += &format!("Cannot find '{}'\n", &sub_path);
                         continue;
                     }
                 };
@@ -133,7 +134,7 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                 match sub_name.get(0..1) {
                     // if sub path is a hidden path
                     Some(c) => {
-                        if c == "." {
+                        if c == "." && !all {
                             continue;
                         }
                     },
@@ -194,7 +195,7 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
             match filename.get(0..0) {
                 // if file is a hidden file
                 Some(c) => {
-                    if c == "." {
+                    if c == "." && !all {
                         continue;
                     }
                 },

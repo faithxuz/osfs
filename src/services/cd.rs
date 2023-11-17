@@ -1,3 +1,5 @@
+// [PASS]
+
 use getopts::Options;
 use crate::fs::metadata;
 use super::{Context, utils, permission};

@@ -276,11 +276,14 @@ pub fn remove_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str)
 
     let mut lock = utils::mutex_lock(fd_table.lock());
     if let Ok(_) = lock.get_dir(inode_addr) {
+        lock.try_drop(inode_addr);
         return Err(FdError::FileOccupied);
     }
+    lock.try_drop(inode_addr);
 
-    let path_vec: Vec<&str> = path.split('/').collect();
-    let parent_path = path_vec[..path_vec.len()-1].join("/");
+    let mut path_vec: Vec<&str> = path.split('/').collect();
+    path_vec.drain(0..1);
+    let parent_path = String::from("/") + &path_vec.join("/");
     let parent_dd = match dir::open_dir(tx.clone(), fd_table.clone(), &parent_path) {
         Ok(d) => d,
         Err(e) => match e {
