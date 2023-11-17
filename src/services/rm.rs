@@ -1,3 +1,4 @@
+ // [PASS]
  /*
  * iterate path in paths:
  *     if path doesn't exist
@@ -31,47 +32,49 @@ const PERMISSION: (bool, bool, bool) = (false, true, false);
 fn remove_dir_recursively(ctx: &mut Context, dir_path: &str) -> String {
     let return_str = String::new();
 
-    // get sub entrys of dir
-    let mut dir_dd = match open_dir(&mut ctx.tx, &dir_path) {
-        Ok(m) => m,
-        Err(e) => return format!("Cannot find directory '{}'\n", dir_path),
-    };
-    let vec = match dir_dd.read() {
-        Ok(v) => v,
-        Err(e) => return format!("Cannot read directory '{}'\n", dir_path),
-    };
-
-    // iterate entry in sub entrys
-    for sub_entry in vec {
-        // skip parent dir and itself
-        if sub_entry.name == ".." || sub_entry.name == "." {
-            continue;
-        }
-        
-        // get sub path
-        let parent_path = dir_path;
-        let sub_path = match utils::convert_path_to_abs(&parent_path, &sub_entry.name) {
-            Ok(p) => p,
-            Err(e) => return format!("Cannot convert '{}' to absolute path\n", sub_entry.name),
-        };
-        let sub_meta = match metadata(&mut ctx.tx, &sub_path) {
+    {
+        // get sub entrys of dir
+        let mut dir_dd = match open_dir(&mut ctx.tx, &dir_path) {
             Ok(m) => m,
-            Err(e) => return format!("Cannot find '{}'\n", sub_entry.name),
+            Err(e) => return format!("Cannot find directory '{}'\n", dir_path),
+        };
+        let vec = match dir_dd.read() {
+            Ok(v) => v,
+            Err(e) => return format!("Cannot read directory '{}'\n", dir_path),
         };
 
-        // check permission
-        let rwx = permission::check_permission(ctx.uid, &sub_meta, PERMISSION);
-        if !rwx {
-            return format!("Permission denied\n");
-        }
+        // iterate entry in sub entrys
+        for sub_entry in vec {
+            // skip parent dir and itself
+            if sub_entry.name == ".." || sub_entry.name == "." {
+                continue;
+            }
 
-        // if sub meta is a dir
-        if sub_meta.is_dir() {
-            remove_dir_recursively(ctx, &sub_path);
-        } else {
-            // remove file
-            if let Err(_) = remove_file(&mut ctx.tx, &sub_path) {
-                return format!("Cannot remove file '{}'\n", sub_entry.name);
+            // get sub path
+            let parent_path = dir_path;
+            let sub_path = match utils::convert_path_to_abs(&parent_path, &sub_entry.name) {
+                Ok(p) => p,
+                Err(e) => return format!("Cannot convert '{}' to absolute path\n", sub_entry.name),
+            };
+            let sub_meta = match metadata(&mut ctx.tx, &sub_path) {
+                Ok(m) => m,
+                Err(e) => return format!("Cannot find '{}'\n", sub_entry.name),
+            };
+
+            // check permission
+            let rwx = permission::check_permission(ctx.uid, &sub_meta, PERMISSION);
+            if !rwx {
+                return format!("Permission denied\n");
+            }
+
+            // if sub meta is a dir
+            if sub_meta.is_dir() {
+                remove_dir_recursively(ctx, &sub_path);
+            } else {
+                // remove file
+                if let Err(_) = remove_file(&mut ctx.tx, &sub_path) {
+                    return format!("Cannot remove file '{}'\n", sub_entry.name);
+                }
             }
         }
     }
@@ -116,7 +119,7 @@ pub fn rm(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     let mut return_str = String::new();
 
     // iterate path in paths
-    for path in &matches.free {
+    for path in matches.free {
         // open path
         let new_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
             Ok(p) => p,
@@ -142,13 +145,16 @@ pub fn rm(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         // check if path is a sir
         if meta.is_dir() {
             // remove dir recursively
-            if !remove_dir {
+            if remove_dir {
                 return_str += &remove_dir_recursively(&mut ctx, &new_path);
+            }
+            else {
+                return_str += &format!("Cannot remove '{path}': Is a directory\n");
             }
         } else {
             // remove file
             if let Err(_) = remove_file(&mut ctx.tx, &new_path) {
-                return_str += &format!("Cannot remove file '{}'\n", path);
+                return_str += &format!("Cannot remove file '{path}'\n");
             }
         }
     }

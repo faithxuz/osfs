@@ -172,7 +172,9 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                     return_str += "  ";
                 }
             }
-            return_str += "\n";
+            if !list_format {
+                return_str += "\n";
+            }
         }
         else {
             // get file
@@ -216,10 +218,11 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                 let time_str = format!("{} {:>2} {:0>2}:{:0>2}", MONTH[mo as usize], d, h, mi);
                 return_str += &format!("{:>7} {:>8} {:>10} {:>12} ", permission_str, owner_str, size_str, time_str);
             }
-            return_str += &filename;
 
+            return_str += &filename;
             return_str += "\n";
         }
+        return_str += "\n";
     }
 
     (ctx, return_str)

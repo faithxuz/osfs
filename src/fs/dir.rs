@@ -264,7 +264,7 @@ pub fn open_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) ->
     };
 
     logger::log(&format!("[FS] Open directory: {path}"));
-    Ok(Dd::new(inode_addr, metadata, tx, fd_table.clone()))
+    Ok(dd)
 }
 
 /// ## Error
@@ -294,7 +294,6 @@ pub fn create_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str, 
     }
 
     let mut inode = inode::alloc_inode(uid, true)?;
-    let metadata = Metadata::new(inode.0, inode.1, tx.clone());
 
     // add parent/new
     dir_add_entry(parent_dd.inode_addr(), inode.0, &dir_name)?;
@@ -361,13 +360,17 @@ pub fn remove_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) 
         return Err(DdError::NotDir);
     }
 
-    let mut lock = utils::mutex_lock(fd_table.lock());
-    if let Some(_) = lock.check(inode_addr) {
-        return Err(DdError::DirOccupied);
+    {
+        let lock = utils::mutex_lock(fd_table.lock());
+        if let Some(_) = lock.check(inode_addr) {
+            return Err(DdError::DirOccupied);
+        }
     }
 
-    let path_vec: Vec<&str> = path.split('/').collect();
-    let parent_path = path_vec[..path_vec.len()-1].join("/");
+    let mut path_vec: Vec<&str> = path.split('/').collect();
+    path_vec.drain(0..1);
+    path_vec.pop();
+    let parent_path = String::from("/") + &path_vec.join("/");
     let parent_dd = match open_dir(tx.clone(), fd_table.clone(), &parent_path) {
         Ok(d) => d,
         Err(e) => match e {
@@ -381,7 +384,6 @@ pub fn remove_dir(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) 
     dir_remove_entry(parent_dd.inode_addr(), inode_addr)?;
 
     // remove file data
-    let inode = inode::load_inode(inode_addr)?;
     let blocks = inode::get_blocks(&inode)?;
     data::free_blocks(&blocks)?;
 
@@ -443,7 +445,9 @@ pub fn dir_add_entry(dir_inode: u32, entry_inode: u32, name: &str) -> Result<()>
     }
     let mut data = entries_to_data(&ents);
     data.append(&mut ent.serialize());
-    file::write_file(dir_inode, &data)?;
+    let emp_ent = Entry { inode: 0, name: String::from("") };
+    data.append(&mut emp_ent.serialize());
+    file::write_file(dir_inode, &mut data)?;
     logger::log(&format!("[FS] Add an entry to directory:\n    \
         [dir_inode_addr] {dir_inode}, \
         [entry_inode_addr] {entry_inode},\n    \
@@ -466,7 +470,9 @@ pub fn dir_remove_entry(dir_inode: u32, entry_inode: u32) -> Result<()> {
             for ent in v {
                 data.append(&mut ent.serialize());
             }
-            file::write_file(dir_inode, &data)?;
+            let emp_ent = Entry { inode: 0, name: String::from("") };
+            data.append(&mut emp_ent.serialize());
+            file::write_file(dir_inode, &mut data)?;
             logger::log(&format!("[FS] Remove an entry from directory: \n    \
                 [dir_inode_addr] {dir_inode}, \
                 [entry_inode_addr] {entry_inode}\

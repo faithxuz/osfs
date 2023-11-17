@@ -204,9 +204,11 @@ impl FdTable {
     }
 
     pub fn try_drop(&mut self, inode: u32) {
-        if let Some(e) = self.data.get(&inode) {
+        if let Some(e) = self.data.get_mut(&inode) {
             if e.count == 1 {
                 let _ = self.data.remove(&inode);
+            } else {
+                e.count -= 1; 
             }
         }
     }
@@ -214,7 +216,7 @@ impl FdTable {
     /// ## Error
     /// 
     /// - NotFileButDir
-    fn add_file(&mut self, inode_addr: u32, inode: &inode::Inode) {
+    fn add_file(&mut self, inode_addr: u32) {
         self.data.insert(inode_addr, FdTableEntry {
             count: 1, is_dir: false
         });
@@ -223,7 +225,7 @@ impl FdTable {
     /// ## Error
     /// 
     /// - NotDirButFile
-    fn add_dir(&mut self, inode_addr: u32, inode: &inode::Inode) {
+    fn add_dir(&mut self, inode_addr: u32) {
         self.data.insert(inode_addr, FdTableEntry{
             count: 1, is_dir: true
         });
@@ -260,7 +262,7 @@ impl FdTable {
                 }
                 ent.count += 1;
             }
-            None => self.add_file(inode_addr, &inode)
+            None => self.add_file(inode_addr)
         }
         Ok(Fd::new(inode_addr, metadata, tx, table_arc))
     }
@@ -289,7 +291,7 @@ impl FdTable {
                 }
                 ent.count += 1;
             }
-            None => self.add_dir(inode_addr, &inode)
+            None => self.add_dir(inode_addr)
         }
         Ok(Dd::new(inode_addr, metadata, tx, table_arc))
     }
@@ -440,8 +442,8 @@ pub fn start_fs(
                     }
                 }
             },
-            FsReq::WriteFile(tx, inode, data ) => {
-                match file::write_file(inode, &data) {
+            FsReq::WriteFile(tx, inode, mut data ) => {
+                match file::write_file(inode, &mut data) {
                     Ok(_) => {
                         if let Err(e) = tx.send(Ok(())) {
                             logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
