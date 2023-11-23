@@ -23,7 +23,7 @@ impl Context {
 }
 
 fn main() {
-    let mut ctx: Context;
+    let mut ctx = Context::new(0);
  
     // login
     for _ in 0..3 {
