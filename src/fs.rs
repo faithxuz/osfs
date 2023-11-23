@@ -24,6 +24,7 @@ mod error {
 
 use error::*;
 
+pub use superblock::Superblock;
 pub use metadata::{Metadata, MetadataError, Rwx};
 pub use file::{Fd, FdError};
 pub use dir::{Dd, DdError, Entry as DirEntry};
@@ -323,177 +324,103 @@ pub fn start_fs(
     }
 
     for received in rx {
-        let debug_str = format!("{:?}", &received);
+        let ds = format!("{:?}", &received);
         match received {
             FsReq::Superblock(tx) => {
                 match superblock::superblock() {
-                    Ok(sb) => {
-                        if let Err(e) = tx.send(Ok(sb)) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
-                    },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    }
+                    Ok(sb) => tx_send(tx, Ok(sb), &ds),
+                    Err(_) => tx_send(tx, Err(FsError::NotFound), &ds)
                 }
             },
             FsReq::Metadata(tx, path) => {
                 match metadata::metadata(self_tx.clone(), &path) {
-                    Ok(m) => {
-                        if let Err(e) = tx.send(Ok(m)) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
-                    },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    }
+                    Ok(m) => tx_send(tx, Ok(m), &ds),
+                    Err(_) => tx_send(tx, Err(FsError::NotFound), &ds)
                 }
             },
             FsReq::OpenFile(tx, path) => {
                 match file::open_file(self_tx.clone(), fd_table.clone(), &path) {
-                    Ok(f) => {
-                        if let Err(e) = tx.send(Ok(f)) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
-                    },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    }
+                    Ok(f) => tx_send(tx, Ok(f), &ds),
+                    Err(_) => tx_send(tx, Err(FsError::NotFound), &ds)
                 }
             },
             FsReq::CreateFile(tx, path, uid) => {
                 match file::create_file(self_tx.clone(), fd_table.clone(), &path, uid) {
-                    Ok(f) => {
-                        if let Err(e) = tx.send(Ok(f)) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
-                    },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    }
+                    Ok(f) => tx_send(tx, Ok(f), &ds),
+                    Err(_) => tx_send(tx, Err(FsError::NotFound), &ds)
                 }
             },
             FsReq::RemoveFile(tx, path) => {
                 match file::remove_file(self_tx.clone(), fd_table.clone(), &path) {
-                    Ok(_) => {
-                        if let Err(e) = tx.send(Ok(())) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
-                    },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    }
+                    Ok(_) => tx_send(tx, Ok(()), &ds),
+                    Err(_) => tx_send(tx, Err(FsError::NotFound), &ds)
                 }
             },
             FsReq::OpenDir(tx, path) => {
                 match dir::open_dir(self_tx.clone(), fd_table.clone(), &path) {
-                    Ok(d) => {
-                        if let Err(e) = tx.send(Ok(d)) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
-                    },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    }
+                    Ok(d) => tx_send(tx, Ok(d), &ds),
+                    Err(_) => tx_send(tx, Err(FsError::NotFound), &ds)
                 }
             },
             FsReq::CreateDir(tx, path, uid) => {
                 match dir::create_dir(self_tx.clone(), fd_table.clone(), &path, uid) {
-                    Ok(d) => if let Err(e) = tx.send(Ok(d)) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    },
+                    Ok(d) => tx_send(tx, Ok(d), &ds),
                     Err(e) => match e {
-                        DdError::InvalidPath => { tx.send(Err(FsError::InvalidPath)).unwrap(); },
-                        DdError::DirExists => { tx.send(Err(FsError::Exists)).unwrap(); },
-                        _ => { tx.send(Err(FsError::InnerError)).unwrap(); }
+                        DdError::InvalidPath => tx_send(tx, Err(FsError::InvalidPath), &ds),
+                        DdError::DirExists => tx_send(tx, Err(FsError::Exists), &ds),
+                        _ => tx_send(tx, Err(FsError::InnerError), &ds)
                     }
                 }
             },
             FsReq::RemoveDir(tx, path) => {
                 match dir::remove_dir(self_tx.clone(), fd_table.clone(), &path) {
-                    Ok(_) => {
-                        if let Err(e) = tx.send(Ok(())) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
-                    },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    }
+                    Ok(_) => tx_send(tx, Ok(()), &ds),
+                    Err(_) => tx_send(tx, Err(FsError::NotFound), &ds)
                 }
             },
             FsReq::UpdateInode(tx, addr, inode) => {
                 match inode::save_inode(addr, &inode) {
-                    Ok(_) => {
-                        if let Err(e) = tx.send(Ok(())) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
-                    },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    }
+                    Ok(_) => tx_send(tx, Ok(()), &ds),
+                    Err(_) => tx_send(tx, Err(FsError::NotFound), &ds)
                 }
             }
             FsReq::ReadFile(tx, inode) => {
                 match file::read_file(inode) {
-                    Ok(v) => {
-                        if let Err(e) = tx.send(Ok(v)) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
-                    },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    }
+                    Ok(v) => tx_send(tx, Ok(v), &ds),
+                    Err(_) => tx_send(tx, Err(FsError::NotFound), &ds)
                 }
             },
             FsReq::WriteFile(tx, inode, mut data ) => {
                 match file::write_file(inode, &mut data) {
-                    Ok(_) => {
-                        if let Err(e) = tx.send(Ok(())) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
-                    },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    }
+                    Ok(_) => tx_send(tx, Ok(()), &ds),
+                    Err(_) => tx_send(tx, Err(FsError::NotFound), &ds)
                 }
             },
             FsReq::ReadDir(tx, inode) => {
                 match dir::read_dir(inode) {
-                    Ok(v) => {
-                        if let Err(e) = tx.send(Ok(v)) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
-                    },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    }
+                    Ok(v) => tx_send(tx, Ok(v), &ds),
+                    Err(_) => tx_send(tx, Err(FsError::NotFound), &ds)
                 }
             },
             FsReq::DirAddEntry(tx, dir_inode, entry_inode, name) => {
                 match dir::dir_add_entry(dir_inode, entry_inode, &name) {
-                    Ok(_) => {
-                        if let Err(e) = tx.send(Ok(())) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
-                    },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    }
+                    Ok(_) => tx_send(tx, Ok(()), &ds),
+                    Err(_) => tx_send(tx, Err(FsError::NotFound), &ds)
                 }
             },
             FsReq::DirRemoveEntry(tx, dir_inode, entry_inode) => {
                 match dir::dir_remove_entry(dir_inode, entry_inode) {
-                    Ok(_) => {
-                        if let Err(e) = tx.send(Ok(())) {
-                            logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                        };
-                    },
-                    Err(e) => if let Err(e) = tx.send(Err(FsError::NotFound)) {
-                        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", &debug_str));
-                    }
+                    Ok(_) => tx_send(tx, Ok(()), &ds),
+                    Err(_) => tx_send(tx, Err(FsError::NotFound), &ds)
                 }
             },
         }
+    }
+}
+
+fn tx_send<T>(tx: Sender<Result<T>>, r: Result<T>, msg: &str) {
+    if let Err(_) = tx.send(r) {
+        logger::log(&format!("[ERR][FS] Sending failed! Request: {}", msg));
     }
 }
 
@@ -549,10 +476,10 @@ fn path_to_inode(mut path: &str) -> Result<u32> {
     Ok(inode)
 }
 
-/// Get superblock of the disk. Return [Metadata].
+/// Get superblock of the disk. Return [Superblock].
 /// 
 /// `fs_tx`: sender for sending request
-pub fn superblock(fs_tx: &mut Sender<FsReq>) -> Result<superblock::Superblock> {
+pub fn superblock(fs_tx: &mut Sender<FsReq>) -> Result<Superblock> {
     let (tx, rx) = mpsc::channel();
     fs_tx.send(FsReq::Superblock(tx))?;
     Ok(rx.recv()??)
@@ -563,7 +490,7 @@ pub fn superblock(fs_tx: &mut Sender<FsReq>) -> Result<superblock::Superblock> {
 /// `fs_tx`: sender for sending request
 /// 
 /// `path`: path to file or directory
-pub fn metadata(fs_tx: &mut Sender<FsReq>, path: &str) -> Result<metadata::Metadata> {
+pub fn metadata(fs_tx: &mut Sender<FsReq>, path: &str) -> Result<Metadata> {
     let (tx, rx) = mpsc::channel();
     fs_tx.send(FsReq::Metadata(tx, String::from(path)))?;
     Ok(rx.recv()??)

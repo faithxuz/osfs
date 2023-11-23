@@ -92,8 +92,10 @@ pub fn route(fs_tx: mpsc::Sender<fs::FsReq>, mut stream: TcpStream, map: Handler
     match map.get(&req.cmd) {
         Some(handler) => {
             logger::log(&format!(
-                "[SERVER] From user{} received commad: {}\n    with args: {:?}",
-                &req.uid, &req.cmd, &req.args
+                "[SERVER] From user{} received commad: {}\n    \
+                with args: {:?}\n    \
+                redirecting to: {}",
+                &req.uid, &req.cmd, &req.args, &req.redirect
             ));
             let ctx = services::Context { uid: req.uid, wd: req.wd, tx: fs_tx.clone() };
             let ctx_o = ctx.clone();
