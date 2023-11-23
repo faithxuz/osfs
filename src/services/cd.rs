@@ -30,24 +30,24 @@ pub fn cd(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
 
     // support only one path
     if matches.free.len() > 1 {
-        return (ctx, String::from("Too many arguments\n"));
+        return (ctx, String::from("cd: Too many arguments\n"));
     }
 
     // get dir path
     let path = &matches.free[0]; 
     let dir_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
         Ok(p) => p,
-        Err(e) => return (ctx, format!("Cannot convert path '{}' to absolute path\n", path)),
+        Err(e) => return (ctx, format!("cd: Cannot convert path '{}' to absolute path\n", path)),
     };
     let meta = match metadata(&mut ctx.tx, &dir_path) {
         Ok(m) => m,
-        Err(e) => return (ctx, format!("Cannot find '{}'\n", path)),
+        Err(e) => return (ctx, format!("cd: Cannot find '{}'\n", path)),
     };
 
     // check permission
     let rwx = permission::check_permission(ctx.uid, &meta, PERMISSION);
     if !rwx {
-        return (ctx, format!("Permission denied\n"));
+        return (ctx, format!("cd: Permission denied\n"));
     }
 
     // switch context
@@ -55,6 +55,6 @@ pub fn cd(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         ctx.wd = dir_path;
         (ctx, String::new())
     } else {
-        return (ctx, format!("'{}' is not a directory\n", path));
+        return (ctx, format!("cd: '{}' is not a directory\n", path));
     }
 }

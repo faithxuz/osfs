@@ -16,7 +16,7 @@ use super::{Context, utils, permission};
 use crate::fs::{metadata, create_dir, FsError};
 
 // define uasge and permission
-const USAGE: &str = "Usage: mkdir [-p] [-v] <directory1> <directory2> ...\n";
+const USAGE: &str = "Usage: mkdir [-pv] <directory>...\n";
 const PERMISSION: (bool, bool, bool) = (false, true, false);
 
 pub fn mkdir(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
@@ -57,7 +57,7 @@ pub fn mkdir(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         let dir_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
             Ok(p) => p,
             Err(e) => {
-                return_str += &format!("Cannot convert \"{}\" to absolute path\n", path);
+                return_str += &format!("mkdir: Cannot convert \"{}\" to absolute path\n", path);
                 continue;
             },
         };
@@ -67,14 +67,14 @@ pub fn mkdir(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         }
 
         // split path
-        let (mut parent_path, mut sub_path) = split_path(&dir_path);
+        let (parent_path, _) = split_path(&dir_path);
 
         match metadata(&mut ctx.tx, &parent_path) {
             Ok(m) => {
                 // check permission
                 let rwx = permission::check_permission(ctx.uid, &m, PERMISSION);
                 if !rwx {
-                    return_str += &format!("Permission denied\n");
+                    return_str += &format!("mkdir: Permission denied\n");
                     continue;
                 }
 
@@ -133,7 +133,7 @@ fn create_nested_dir(ctx: &mut Context, path: &str, verbose: bool) -> String {
     // iterate dir in splited path
     for dir in path_split {
         if dir == "" {
-            return_str += &format!("Invalid path \"{path}\"\n");
+            return_str += &format!("mkdir: Invalid path \"{path}\"\n");
             break;
         }
 
@@ -148,7 +148,7 @@ fn create_nested_dir(ctx: &mut Context, path: &str, verbose: bool) -> String {
                     // check permission
                     let rwx = permission::check_permission(ctx.uid, &m, PERMISSION);
                     if !rwx {
-                        return_str += &format!("Permission denied\n");
+                        return_str += &format!("mkdir: Permission denied\n");
                         break;
                     }
                 }

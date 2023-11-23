@@ -79,7 +79,10 @@ impl FsError {
     fn DiskErr(e: DiskError) -> Self {
         match e {
             DiskError::InvalidAddr => Self::InvalidPath,
-            DiskError::IoErr(_) => Self::InnerError
+            DiskError::IoErr(e) => {
+                logger::log(&format!("[ERR][FS] IoErr: {e:?}"));
+                Self::InnerError
+            }
         }
     }
 }

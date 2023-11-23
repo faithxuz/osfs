@@ -59,6 +59,7 @@ fn save_bitmap(bitmap: &Bitmap) -> Result<()> {
     }
 }
 
+// [PASS]
 /// ## Error
 /// 
 /// - InsufficientUsableBlocks
@@ -79,6 +80,7 @@ pub fn alloc_blocks(count: u32) -> Result<Vec<u32>> {
     Ok(v)
 }
 
+// [PASS]
 /// ## Error
 /// 
 /// - InvalidAddr

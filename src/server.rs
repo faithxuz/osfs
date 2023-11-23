@@ -7,6 +7,7 @@ pub struct SdReq {
     pub wd: String,
     pub cmd: String,
     pub args: Vec<String>,
+    pub redirects: Vec<String>,
 }
 
 #[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
@@ -44,7 +45,7 @@ pub fn start_server(fs_tx: mpsc::Sender<fs::FsReq>) {
     map.insert(String::from("mkdir"), services::mkdir);
     map.insert(String::from("check"), services::check);
 
-    // start tcp listening
+    // start tcp listener
     let listener = match TcpListener::bind(format!("127.0.0.1:{PORT}")) {
         Ok(l) => l,
         Err(e) => {
@@ -54,7 +55,7 @@ pub fn start_server(fs_tx: mpsc::Sender<fs::FsReq>) {
     };
     let pool = ThreadPool::new(8);
 
-    // for EVERY request, call fn handle in a new thread
+    // for EVERY request, call fn handle in a thread from thread pool
     for s in listener.incoming() {
         let stream = match s {
             Ok(s) => s,
@@ -65,23 +66,23 @@ pub fn start_server(fs_tx: mpsc::Sender<fs::FsReq>) {
 
         let tx = fs_tx.clone();
         let m = map.clone();
-        pool.execute(move || route(tx, stream, m))
+        pool.execute(move || if let Err(e) = route(tx, stream, m) {
+            logger::log(&format!("[SERVER] IoErr: {e:?}"));
+        })
     }
 }
 
 // run in seperated thread
-pub fn route(fs_tx: mpsc::Sender<fs::FsReq>, mut stream: TcpStream, map: HandlerMap) {
+pub fn route(fs_tx: mpsc::Sender<fs::FsReq>, mut stream: TcpStream, map: HandlerMap) -> Result<(), std::io::Error> {
     // extract stream as json: SdReq
     let mut req = String::new();
     let mut reader = BufReader::new(&mut stream);
-    if let Err(e) = reader.read_line(&mut req) {
-        todo!()
-    }
+    reader.read_line(&mut req)?;
     let req: SdReq = match serde_json::from_str(&req) {
         Ok(obj) => obj,
         Err(_) => {
             logger::log(&format!("[SERVER] Received unknown msg: {req}"));
-            return;
+            return Ok(());
         }
     };
 
@@ -93,21 +94,19 @@ pub fn route(fs_tx: mpsc::Sender<fs::FsReq>, mut stream: TcpStream, map: Handler
                 &req.uid, &req.cmd, &req.args
             ));
             let ctx = services::Context { uid: req.uid, wd: req.wd, tx: fs_tx.clone() };
+            let ctx_o = ctx.clone();
             let args: Vec<&str> = req.args.iter().map(|s| s.as_str()).collect();
             let (ctx, s) = handler(ctx, args);
+            let o = services::output(ctx_o, s, &req.redirects);
 
             // return result as json: SdRes
-            let res = SdRes { wd: ctx.wd, result: s };
+            let res = SdRes { wd: ctx.wd, result: o };
             let mut res_msg = serde_json::to_string(&res).unwrap();
             res_msg = res_msg + "\n";
 
             // send response
-            if let Err(e) = stream.write_all(res_msg.as_bytes()) {
-                todo!()
-            }
-            if let Err(e) = stream.flush() {
-                todo!()
-            }
+            stream.write_all(res_msg.as_bytes())?;
+            stream.flush()?;
         },
         None => {
             logger::log(&format!(
@@ -123,12 +122,9 @@ pub fn route(fs_tx: mpsc::Sender<fs::FsReq>, mut stream: TcpStream, map: Handler
             res_msg = res_msg + "\n";
 
             // send response
-            if let Err(e) = stream.write_all(res_msg.as_bytes()) {
-                todo!()
-            }
-            if let Err(e) = stream.flush() {
-                todo!()
-            }
+            stream.write_all(res_msg.as_bytes())?;
+            stream.flush()?;
         }
     }
+    Ok(())
 }

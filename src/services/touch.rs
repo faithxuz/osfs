@@ -15,7 +15,7 @@ use getopts::Options;
 use super::{Context, utils, permission};
 use crate::fs::{metadata, create_file};
 
-const USAGE: &str = "Usage: touch <name1> <name2> ...\n";
+const USAGE: &str = "Usage: touch <file>...\n";
 const PERMISSION: (bool, bool, bool) = (false, true, false);
 
 pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
@@ -50,7 +50,7 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         let new_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
             Ok(p) => p,
             Err(e) => {
-                return_str += &format!("Cannot convert '{}' to absolute path\n", path);
+                return_str += &format!("touch: Cannot convert '{}' to absolute path\n", path);
                 continue;
             }
         };
@@ -58,7 +58,7 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         // update timestamp
         if let Ok(mut m) = metadata(&mut ctx.tx, &new_path) {
             if let Err(e) = m.update_timestamp() {
-                return_str += &format!("Cannot update timestamp: '{}'\n", path);
+                return_str += &format!("touch: Cannot update timestamp: '{}'\n", path);
             }
             continue;
         }
@@ -66,17 +66,17 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         // split path
         let (parent_path, _) = utils::split_path(&new_path);
 
-        match metadata(&mut ctx.tx, &parent_path) {
+        match metadata(&mut ctx.tx, parent_path) {
             Ok(m) => {
                 // check permission
                 let rwx = permission::check_permission(ctx.uid, &m, PERMISSION);
                 if !rwx {
-                    return_str += &format!("Permission denied\n");
+                    return_str += &format!("touch: Permission denied: '{path}'\n");
                 }
 
                 // create file
                 if let Err(e) = create_file(&mut ctx.tx, &new_path, ctx.uid) {
-                    return_str += &format!("Cannot create file: '{}'\n", path);
+                    return_str += &format!("touch: Cannot create file: '{}'\n", path);
                 }
             }
             Err(e) => {

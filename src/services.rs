@@ -1,39 +1,41 @@
-pub mod permission;
-
+mod permission;
 mod utils;
-
+mod output;
 mod info;
-pub use info::info;
-
 mod cd;
-pub use cd::cd;
-
 mod ls;
-pub use ls::ls;
-
 mod mkdir;
-pub use mkdir::mkdir;
-
 mod touch;
-pub use touch::touch;
-
 mod cat;
-pub use cat::cat;
-
 mod cp;
-pub use cp::cp;
-
 mod rm;
-pub use rm::rm;
-
 mod check;
-pub use check::check;
 
-use std::sync::mpsc::Sender;
-use super::fs::FsReq;
+pub use {
+    output::output,
+    info::info,
+    cd::cd,
+    ls::ls,
+    mkdir::mkdir,
+    touch::touch,
+    cat::cat,
+    cp::cp,
+    rm::rm,
+    check::check,
+};
 
 pub struct Context {
     pub uid: u8,
     pub wd: String,
-    pub tx: Sender<FsReq>,
+    pub tx: std::sync::mpsc::Sender<super::fs::FsReq>,
+}
+
+impl Clone for Context {
+    fn clone(&self) -> Self {
+        Self {
+            uid: self.uid,
+            wd: self.wd.clone(),
+            tx: self.tx.clone(),
+        }
+    }
 }

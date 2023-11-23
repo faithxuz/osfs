@@ -182,6 +182,16 @@ pub fn open_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) -
     Ok(fd)
 }
 
+// [PASS]
+/// ## Error
+/// 
+/// - InvalidPath
+/// - ParentNotFound
+/// - ParentNotDir
+/// - NoEnoughSpace
+/// - FileExists
+/// - FileIncorrupted
+/// - IoErr(e)
 pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str, uid: u8) -> Result<Fd> {
     let mut path_vec: Vec<&str> = path.split('/').collect();
     let dir_name = String::from(match path_vec.pop() {
@@ -194,7 +204,8 @@ pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str,
         Err(e) => match e {
             DdError::NotFound => return Err(FdError::ParentNotFound),
             DdError::NotDir => return Err(FdError::ParentNotDir),
-            _ => /**/panic!("{e:?}")
+            DdError::DirIncorrupted => return Err(FdError::FileIncorrupted),
+            _ => panic!("{e:?}")
         }
     };
     match metadata(tx.clone(), path) {
@@ -248,6 +259,7 @@ pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str,
     Ok(fd)
 }
 
+// [PASS]
 /// ## Error
 /// 
 /// - InvalidPath
@@ -314,6 +326,7 @@ pub fn remove_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str)
     Ok(())
 }
 
+// [PASS]
 /// ## Error
 /// 
 /// - NotFound
@@ -336,6 +349,7 @@ pub fn read_file(inode: u32) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
+// [PASS]
 /// ## Error
 /// 
 /// - NotFound
