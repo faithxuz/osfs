@@ -64,7 +64,7 @@ fn remove_dir_recursively(ctx: &mut Context, dir_path: &str) -> String {
             // check permission
             let rwx = permission::check_permission(ctx.uid, &sub_meta, PERMISSION);
             if !rwx {
-                return format!("rm: Permission denied: '{path}'\n");
+                return format!("rm: Permission denied: '{sub_path}'\n");
             }
 
             // if sub meta is a dir
