@@ -37,11 +37,11 @@ pub fn cd(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     let path = &matches.free[0]; 
     let dir_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
         Ok(p) => p,
-        Err(e) => return (ctx, format!("cd: Cannot convert path '{}' to absolute path\n", path)),
+        Err(_) => return (ctx, format!("cd: Cannot convert path '{}' to absolute path\n", path)),
     };
     let meta = match metadata(&mut ctx.tx, &dir_path) {
         Ok(m) => m,
-        Err(e) => return (ctx, format!("cd: Cannot find '{}'\n", path)),
+        Err(_) => return (ctx, format!("cd: Cannot find '{}'\n", path)),
     };
 
     // check permission

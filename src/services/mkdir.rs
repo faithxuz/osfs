@@ -13,7 +13,7 @@
  */
 use getopts::Options;
 use super::{Context, utils, permission};
-use crate::fs::{metadata, create_dir, FsError};
+use crate::fs::{metadata, create_dir};
 
 // define uasge and permission
 const USAGE: &str = "Usage: mkdir [-pv] <directory>...\n";
@@ -56,7 +56,7 @@ pub fn mkdir(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     for path in &matches.free {
         let dir_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
             Ok(p) => p,
-            Err(e) => {
+            Err(_) => {
                 return_str += &format!("mkdir: Cannot convert \"{}\" to absolute path\n", path);
                 continue;
             },
@@ -86,10 +86,10 @@ pub fn mkdir(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                             return_str += &format!("mkdir: created directory \"{}\"\n", path);
                         }
                     },
-                    Err(e) => return_str += &format!("Cannot create directory \"{}\"\n", path),
+                    Err(_) => return_str += &format!("Cannot create directory \"{}\"\n", path),
                 }
             }
-            Err(e) => {
+            Err(_) => {
                 // return error if "-r" is not specified
                 if !recursive {
                     return_str += &format!("mkdir: cannot create directory \"{}\": No such file or directory\n", parent_path);
@@ -152,7 +152,7 @@ fn create_nested_dir(ctx: &mut Context, path: &str, verbose: bool) -> String {
                         break;
                     }
                 }
-                Err(e) => {
+                Err(_) => {
                     // doesn\"t exist: create dir
                     match create_dir(&mut ctx.tx, &current_path, ctx.uid) {
                         Ok(_) => {
@@ -161,7 +161,7 @@ fn create_nested_dir(ctx: &mut Context, path: &str, verbose: bool) -> String {
                                 return_str += &format!("mkdir: created directory \"{}\"\n", current_path);
                             }
                         },
-                        Err(e) => return_str += &format!("Cannot create directory \"{}\"\n", current_path),
+                        Err(_) => return_str += &format!("Cannot create directory \"{}\"\n", current_path),
                     }
                 }
             }

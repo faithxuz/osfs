@@ -35,6 +35,7 @@ type HandlerMap = std::collections::HashMap<
 pub fn start_server(fs_tx: mpsc::Sender<fs::FsReq>) {
     // init handler map
     let mut map = HandlerMap::new();
+    map.insert(String::from("login"), services::login);
     map.insert(String::from("info"), services::info);
     map.insert(String::from("cd"), services::cd);
     map.insert(String::from("ls"), services::ls);
@@ -60,7 +61,8 @@ pub fn start_server(fs_tx: mpsc::Sender<fs::FsReq>) {
         let stream = match s {
             Ok(s) => s,
             Err(e) => {
-                todo!()
+                logger::log(&format!("[SERVER] TcpStreamError: {e:?}"));
+                continue;
             }
         };
 

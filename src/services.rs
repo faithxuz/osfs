@@ -1,5 +1,6 @@
 mod permission;
 mod utils;
+mod login;
 mod output;
 mod info;
 mod cd;
@@ -12,6 +13,7 @@ mod rm;
 mod check;
 
 pub use {
+    login::login,
     output::output,
     info::info,
     cd::cd,

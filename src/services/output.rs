@@ -14,7 +14,7 @@ pub fn output(mut ctx: Context, s: String, redirects: &Vec<String>) -> String {
     for path in redirects {
         let abs_path = match utils::convert_path_to_abs(&ctx.wd, path) {
             Ok(s) => s,
-            Err(e) => {
+            Err(_) => {
                 rtn_str += &format!("shell: Cannot write to '{path}': Invalid path.\n");
                 continue;
             }
@@ -34,7 +34,7 @@ pub fn output(mut ctx: Context, s: String, redirects: &Vec<String>) -> String {
                 match e {
                     FsError::NotFound => {
                         // create one
-                        let (parent, filename) = utils::split_path(path);
+                        let (parent, _) = utils::split_path(path);
                         match metadata(&mut ctx.tx, parent) {
                             Ok(m) => {
                                 if !permission::check_permission(ctx.uid, &m, PERMISSION) {
@@ -67,7 +67,7 @@ pub fn output(mut ctx: Context, s: String, redirects: &Vec<String>) -> String {
             }
         };
 
-        if let Err(e) = fd.write(&s.as_bytes().to_vec()) {
+        if let Err(_) = fd.write(&s.as_bytes().to_vec()) {
             rtn_str += &format!("shell: Cannot write to '{path}': Inner Error.\n");
         }
     }

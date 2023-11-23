@@ -26,12 +26,22 @@ fn main() {
     let mut ctx = Context::new(0);
  
     // login
-    for _ in 0..3 {
+    let mut try_count = 0;
+    loop {
+        if try_count >= 3 {
+            std::process::exit(1);
+        }
+        try_count += 1;
         print("login (id in 0~255): ");
         let buf = read_raw();
         match buf.parse::<i64>() {
             Ok(id) => if id >= 0 && id < 256 {
                 ctx = Context::new(id as u8);
+                let login = send(&mut ctx, String::from("login"), Vec::new(), Vec::new());
+                if login != "" {
+                    print(&login);
+                    std::process::exit(1);
+                }
                 break;
             }
             else {
@@ -39,7 +49,6 @@ fn main() {
             }
             Err(_) => print("Not a number!\n")
         }
-        connect();
     }
 
     // main loop
@@ -71,22 +80,10 @@ fn print(s: &str) {
     stdout.flush().unwrap();
 }
 
-fn connect() -> TcpStream {
-    // connect to simdisk
-    let addr = SocketAddr::from(([127,0,0,1],PORT));
-    match TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(30)) {
-        Ok(s) => s,
-        Err(_) => {
-            print("Cannot connect to simdisk!");
-            std::process::exit(1);
-        }
-    }
-}
-
 fn read() -> (Vec<String>, Vec<String>) {
     let mut args = Vec::<String>::new();
     let mut redirects = Vec::<String>::new();
-    let mut line = read_raw();
+    let line = read_raw();
 
     // parse words
     let mut word = String::new();
@@ -155,6 +152,18 @@ fn read_raw() -> String {
         }
     }
     buf
+}
+
+fn connect() -> TcpStream {
+    // connect to simdisk
+    let addr = SocketAddr::from(([127,0,0,1],PORT));
+    match TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(30)) {
+        Ok(s) => s,
+        Err(_) => {
+            print("Cannot connect to simdisk!");
+            std::process::exit(1);
+        }
+    }
 }
 
 fn send(

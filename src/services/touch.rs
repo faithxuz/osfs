@@ -49,7 +49,7 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     for path in &matches.free {
         let new_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
             Ok(p) => p,
-            Err(e) => {
+            Err(_) => {
                 return_str += &format!("touch: Cannot convert '{}' to absolute path\n", path);
                 continue;
             }
@@ -57,7 +57,7 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
 
         // update timestamp
         if let Ok(mut m) = metadata(&mut ctx.tx, &new_path) {
-            if let Err(e) = m.update_timestamp() {
+            if let Err(_) = m.update_timestamp() {
                 return_str += &format!("touch: Cannot update timestamp: '{}'\n", path);
             }
             continue;
@@ -75,11 +75,11 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                 }
 
                 // create file
-                if let Err(e) = create_file(&mut ctx.tx, &new_path, ctx.uid) {
+                if let Err(_) = create_file(&mut ctx.tx, &new_path, ctx.uid) {
                     return_str += &format!("touch: Cannot create file: '{}'\n", path);
                 }
             }
-            Err(e) => {
+            Err(_) => {
                 return_str += &format!("touch: cannot touch '{}': No such file or directory\n", path);
             }
         }

@@ -36,11 +36,11 @@ fn remove_dir_recursively(ctx: &mut Context, dir_path: &str) -> String {
         // get sub entrys of dir
         let mut dir_dd = match open_dir(&mut ctx.tx, &dir_path) {
             Ok(m) => m,
-            Err(e) => return format!("rm: Cannot find directory '{}'\n", dir_path),
+            Err(_) => return format!("rm: Cannot find directory '{}'\n", dir_path),
         };
         let vec = match dir_dd.read() {
             Ok(v) => v,
-            Err(e) => return format!("rm: Cannot read directory '{}'\n", dir_path),
+            Err(_) => return format!("rm: Cannot read directory '{}'\n", dir_path),
         };
 
         // iterate entry in sub entrys
@@ -54,11 +54,11 @@ fn remove_dir_recursively(ctx: &mut Context, dir_path: &str) -> String {
             let parent_path = dir_path;
             let sub_path = match utils::convert_path_to_abs(&parent_path, &sub_entry.name) {
                 Ok(p) => p,
-                Err(e) => return format!("rm: Cannot convert '{}' to absolute path\n", sub_entry.name),
+                Err(_) => return format!("rm: Cannot convert '{}' to absolute path\n", sub_entry.name),
             };
             let sub_meta = match metadata(&mut ctx.tx, &sub_path) {
                 Ok(m) => m,
-                Err(e) => return format!("rm: Cannot find '{}'\n", sub_entry.name),
+                Err(_) => return format!("rm: Cannot find '{}'\n", sub_entry.name),
             };
 
             // check permission
@@ -130,7 +130,7 @@ pub fn rm(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         };
         let meta = match metadata(&mut ctx.tx, &new_path) {
             Ok(m) => m,
-            Err(e) => {
+            Err(_) => {
                 return_str += &format!("rm: Cannot find '{}'\n", path);
                 continue;
             },
