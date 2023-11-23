@@ -7,7 +7,7 @@ pub struct SdReq {
     pub wd: String,
     pub cmd: String,
     pub args: Vec<String>,
-    pub redirects: Vec<String>,
+    pub redirect: String,
 }
 
 #[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
@@ -99,7 +99,7 @@ pub fn route(fs_tx: mpsc::Sender<fs::FsReq>, mut stream: TcpStream, map: Handler
             let ctx_o = ctx.clone();
             let args: Vec<&str> = req.args.iter().map(|s| s.as_str()).collect();
             let (ctx, s) = handler(ctx, args);
-            let o = services::output(ctx_o, s, &req.redirects);
+            let o = services::output(ctx_o, s, &req.redirect);
 
             // return result as json: SdRes
             let res = SdRes { wd: ctx.wd, result: o };

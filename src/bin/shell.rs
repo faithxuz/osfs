@@ -23,7 +23,7 @@ impl Context {
 }
 
 fn main() {
-    let mut ctx = Context::new(0);
+    let mut ctx: Context;
  
     // login
     let mut try_count = 0;
@@ -37,7 +37,10 @@ fn main() {
         match buf.parse::<i64>() {
             Ok(id) => if id >= 0 && id < 256 {
                 ctx = Context::new(id as u8);
-                let login = send(&mut ctx, String::from("login"), Vec::new(), Vec::new());
+                let login = send(
+                    &mut ctx, String::from("login"),
+                    Vec::new(), String::new()
+                );
                 if login != "" {
                     print(&login);
                     std::process::exit(1);
@@ -80,9 +83,9 @@ fn print(s: &str) {
     stdout.flush().unwrap();
 }
 
-fn read() -> (Vec<String>, Vec<String>) {
+fn read() -> (Vec<String>, String) {
     let mut args = Vec::<String>::new();
-    let mut redirects = Vec::<String>::new();
+    let mut redirect = String::new();
     let line = read_raw();
 
     // parse words
@@ -97,7 +100,8 @@ fn read() -> (Vec<String>, Vec<String>) {
                 continue;
             } else if word != "" {
                 if red_flag {
-                    redirects.push(word);
+                    redirect = word;
+                    red_flag = false;
                 } else {
                     args.push(word);
                 }
@@ -119,7 +123,7 @@ fn read() -> (Vec<String>, Vec<String>) {
                 '"' => {
                     if word != "" {
                         if red_flag {
-                            redirects.push(word);
+                            redirect = word;
                         } else {
                             args.push(word);
                         }
@@ -133,12 +137,12 @@ fn read() -> (Vec<String>, Vec<String>) {
     }
     if word != "" {
         if red_flag {
-            redirects.push(word);
+            redirect = word;
         } else {
             args.push(word);
         }
     }
-    (args, redirects)
+    (args, redirect)
 }
 
 fn read_raw() -> String {
@@ -170,13 +174,13 @@ fn send(
     ctx: &mut Context,
     cmd: String,
     args: Vec<String>,
-    redirects: Vec<String>
+    redirect: String
 ) -> String {
     let mut conn = connect();
     let msg = SdReq {
         uid: ctx.user,
         wd: ctx.wd.clone(),
-        cmd, args, redirects
+        cmd, args, redirect
     };
     let mut s_msg = serde_json::to_string(&msg).unwrap();
     s_msg = s_msg + "\n";
