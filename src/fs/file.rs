@@ -338,14 +338,15 @@ pub fn read_file(inode: u32) -> Result<Vec<u8>> {
     let mut buf = disk::read_blocks(&blocks)?;
 
     // trim end
-    let end_at = 0;
+    let mut end_at = 0;
     for b in &buf {
         if *b == 0 {
             break
         }
+        end_at += 1;
     }
     buf.drain(end_at..);
-    
+
     Ok(buf)
 }
 

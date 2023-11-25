@@ -30,13 +30,13 @@ pub fn output(mut ctx: Context, s: String, redirect: &str) -> String {
             match e {
                 FsError::NotFound => {
                     // create one
-                    let (parent, _) = utils::split_path(redirect);
+                    let (parent, _) = utils::split_path(&abs_path);
                     match metadata(&mut ctx.tx, parent) {
                         Ok(m) => {
                             if !permission::check_permission(ctx.uid, &m, PERMISSION) {
                                 return format!("shell: Permission denied: {redirect}\n");
                             }
-                            match create_file(&mut ctx.tx, redirect, ctx.uid) {
+                            match create_file(&mut ctx.tx, &abs_path, ctx.uid) {
                                 Ok(f) => f,
                                 Err(_) => {
                                     return format!("shell: Cannot write to '{redirect}': Error when creating file.\n");
@@ -58,6 +58,7 @@ pub fn output(mut ctx: Context, s: String, redirect: &str) -> String {
         }
     };
 
+    // write file
     if let Err(_) = fd.write(&s.as_bytes().to_vec()) {
         return format!("shell: Cannot write to '{redirect}': Inner Error.\n");
     }

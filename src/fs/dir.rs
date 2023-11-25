@@ -417,7 +417,7 @@ pub fn read_dir(dir_inode: u32) -> Result<Vec<Entry>> {
         }
         v.push(ent);
     }
-    logger::log(&format!("[FS] Read directory: [dir_inode_addr] {dir_inode}"));
+
     Ok(v)
 }
 

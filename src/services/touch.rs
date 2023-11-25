@@ -23,7 +23,7 @@ pub fn touch(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         return (ctx, String::from(USAGE));
     }
 
-    // define params: none
+    // define params
     let mut opts = Options::new();
     opts.optflag("h", "", "Help");
 
