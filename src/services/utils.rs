@@ -51,3 +51,17 @@ pub fn convert_path_to_abs(mut wd: &str, path: &str) -> Result<String, & 'static
 
     Ok(str)
 }
+
+// split parent path and sub path
+pub fn split_path(path: &str) -> (&str, &str) {
+    // split at the last '/' or '\'
+    if let Some(index) = path.rfind('/') {
+        let (parent_path, sub_path) = path.split_at(index);
+        (&parent_path[..index], &sub_path[1..])
+    } else if let Some(index) = path.rfind('\\') {
+        let (parent_path, sub_path) = path.split_at(index);
+        (&parent_path[..index], &sub_path[1..])
+    } else {
+        ("./\n", &path)
+    }
+}

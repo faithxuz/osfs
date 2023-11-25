@@ -23,15 +23,28 @@ impl Context {
 }
 
 fn main() {
-    connect();
     let mut ctx: Context;
-    let mut buf = String::new();
+ 
+    // login
+    let mut try_count = 0;
     loop {
+        if try_count >= 3 {
+            std::process::exit(1);
+        }
+        try_count += 1;
         print("login (id in 0~255): ");
-        read(&mut buf);
+        let buf = read_raw();
         match buf.parse::<i64>() {
             Ok(id) => if id >= 0 && id < 256 {
                 ctx = Context::new(id as u8);
+                let login = send(
+                    &mut ctx, String::from("login"),
+                    Vec::new(), String::new()
+                );
+                if login != "" {
+                    print(&login);
+                    std::process::exit(1);
+                }
                 break;
             }
             else {
@@ -40,22 +53,27 @@ fn main() {
             Err(_) => print("Not a number!\n")
         }
     }
+
+    // main loop
     loop {
         print(&format!("user{}:{} $ ", ctx.user, ctx.wd));
-        read(&mut buf);
-        let input = parse(&buf);
-        let cmd = match input.get(0) {
-            Some(c) => *c,
-            None => continue
-        };
+        let mut input = read();
+        if input.0.len() == 0 {
+            continue;
+        }
+        let mut cmd = String::new();
+        for s in input.0.drain(0..1) {
+            cmd = s;
+            break;
+        }
         if cmd.to_ascii_lowercase() == "exit" {
             break;
         }
 
-        // send request to simdisk: ctx + args
+        // send request to simdisk: ctx + args + redirects
         // and receive response
         // output the result
-        print(&send(&mut ctx, cmd, &input[1..]));
+        print(&send(&mut ctx, cmd, input.0, input.1));
     }
 }
 
@@ -63,6 +81,81 @@ fn print(s: &str) {
     let mut stdout = io::stdout().lock();
     stdout.write_all(s.as_bytes()).unwrap();
     stdout.flush().unwrap();
+}
+
+fn read() -> (Vec<String>, String) {
+    let mut args = Vec::<String>::new();
+    let mut redirect = String::new();
+    let line = read_raw();
+
+    // parse words
+    let mut word = String::new();
+    let mut it = line.chars();
+    let mut quote_flag = false;
+    let mut red_flag = false;
+    while let Some(c) = it.next() {
+        if c.is_whitespace() {
+            if quote_flag {
+                word.push(c);
+                continue;
+            } else if word != "" {
+                if red_flag {
+                    redirect = word;
+                    red_flag = false;
+                } else {
+                    args.push(word);
+                }
+                word = String::new();
+            }
+        } else {
+            match c {
+                '>' => {
+                    if quote_flag {
+                        word.push(c);
+                    } else {
+                        if word != "" {
+                            args.push(word);
+                            word = String::new();
+                        }
+                        red_flag = true;
+                    }
+                }
+                '"' => {
+                    if word != "" {
+                        if red_flag {
+                            redirect = word;
+                        } else {
+                            args.push(word);
+                        }
+                        word = String::new();
+                    }
+                    quote_flag = !quote_flag;
+                },
+                _ => word.push(c)
+            }
+        }
+    }
+    if word != "" {
+        if red_flag {
+            redirect = word;
+        } else {
+            args.push(word);
+        }
+    }
+    (args, redirect)
+}
+
+fn read_raw() -> String {
+    let mut buf = String::new();
+    let mut stdin = io::stdin().lock();
+    stdin.read_line(&mut buf).unwrap();
+    if buf.ends_with('\n') {
+        buf.pop();
+        if buf.ends_with('\r') {
+            buf.pop();
+        }
+    }
+    buf
 }
 
 fn connect() -> TcpStream {
@@ -77,37 +170,17 @@ fn connect() -> TcpStream {
     }
 }
 
-fn read(buf: &mut String) {
-    buf.clear();
-    let mut stdin = io::stdin().lock();
-    stdin.read_line(buf).unwrap();
-    if buf.ends_with('\n') {
-        buf.pop();
-        if buf.ends_with('\r') {
-            buf.pop();
-        }
-    }
-}
-
-fn parse(input: &str) -> Vec<&str> {
-    input.split_ascii_whitespace().collect()
-}
-
 fn send(
     ctx: &mut Context,
-    cmd: &str,
-    args: &[&str]
+    cmd: String,
+    args: Vec<String>,
+    redirect: String
 ) -> String {
     let mut conn = connect();
-    let mut v_args = Vec::<String>::new();
-    for arg in args {
-        v_args.push(String::from(*arg));
-    }
     let msg = SdReq {
         uid: ctx.user,
         wd: ctx.wd.clone(),
-        cmd: String::from(cmd),
-        args: v_args
+        cmd, args, redirect
     };
     let mut s_msg = serde_json::to_string(&msg).unwrap();
     s_msg = s_msg + "\n";

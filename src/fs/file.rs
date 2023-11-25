@@ -162,32 +162,36 @@ pub fn open_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) -
             _ => panic!("{e:?}")
         }
     };
-    let inode = match inode::load_inode(inode_addr) {
-        Ok(i) => i,
-        Err(e) => match e {
-            InodeError::InvalidAddr => return Err(FdError::NotFound),
-            InodeError::DiskErr(e) => return Err(FdError::DiskErr(e)),
-            _ => panic!("{e:?}")
-        }
-    };
+    let inode = inode::load_inode(inode_addr)?;
     let metadata = Metadata::new(inode_addr, inode, tx.clone());
+    if metadata.is_dir() {
+        return Err(FdError::NotFile);
+    }
 
     // add into fd table
     let mut lock = utils::mutex_lock(fd_table.lock());
-    match lock.get_file(inode_addr) {
-        Ok(opt) => if let None = opt {
-            lock.add_file(inode_addr, &inode).unwrap();
-        },
+    let fd = match lock.get_file(tx.clone(), inode_addr, fd_table.clone()) {
+        Ok(f) => f,
         Err(e) => match e {
-            FsError::NotFileButDir => return Err(FdError::FileIncorrupted),
+            FsError::NotDirButFile => return Err(FdError::NotFile),
             _ => panic!("{e:?}")
         }
-    }
+    };
 
     logger::log(&format!("[FS] Open file: {path}"));
-    Ok(Fd::new(inode_addr, metadata, tx, fd_table.clone()))
+    Ok(fd)
 }
 
+// [PASS]
+/// ## Error
+/// 
+/// - InvalidPath
+/// - ParentNotFound
+/// - ParentNotDir
+/// - NoEnoughSpace
+/// - FileExists
+/// - FileIncorrupted
+/// - IoErr(e)
 pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str, uid: u8) -> Result<Fd> {
     let mut path_vec: Vec<&str> = path.split('/').collect();
     let dir_name = String::from(match path_vec.pop() {
@@ -200,7 +204,8 @@ pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str,
         Err(e) => match e {
             DdError::NotFound => return Err(FdError::ParentNotFound),
             DdError::NotDir => return Err(FdError::ParentNotDir),
-            _ => /**/panic!("{e:?}")
+            DdError::DirIncorrupted => return Err(FdError::FileIncorrupted),
+            _ => panic!("{e:?}")
         }
     };
     match metadata(tx.clone(), path) {
@@ -214,7 +219,6 @@ pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str,
     }
 
     let mut inode = inode::alloc_inode(uid, false)?;
-    let metadata = Metadata::new(inode.0, inode.1, tx.clone());
 
     // add parent/new
     if let Err(e) = dir::dir_add_entry(parent_dd.inode_addr(), inode.0, &dir_name) {
@@ -243,12 +247,19 @@ pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str,
 
     // add into fd table
     let mut lock = utils::mutex_lock(fd_table.lock());
-    lock.add_file(inode.0, &inode.1).unwrap();
+    let fd = match lock.get_file(tx.clone(), inode.0, fd_table.clone()) {
+        Ok(f) => f,
+        Err(e) => match e {
+            FsError::NotDirButFile => return Err(FdError::NotFile),
+            _ => panic!("{e:?}")
+        }
+    };
 
     logger::log(&format!("[FS] Create file by user{uid}: {path}"));
-    Ok(Fd::new(inode.0, metadata, tx.clone(), fd_table.clone()))
+    Ok(fd)
 }
 
+// [PASS]
 /// ## Error
 /// 
 /// - InvalidPath
@@ -274,13 +285,17 @@ pub fn remove_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str)
         return Err(FdError::NotFile);
     }
 
-    let mut lock = utils::mutex_lock(fd_table.lock());
-    if let Ok(_) = lock.get_dir(inode_addr) {
-        return Err(FdError::FileOccupied);
+    {
+        let lock = utils::mutex_lock(fd_table.lock());
+        if let Some(_) = lock.check(inode_addr) {
+            return Err(FdError::FileOccupied);
+        }
     }
 
-    let path_vec: Vec<&str> = path.split('/').collect();
-    let parent_path = path_vec[..path_vec.len()-1].join("/");
+    let mut path_vec: Vec<&str> = path.split('/').collect();
+    path_vec.drain(0..1);
+    path_vec.pop();
+    let parent_path = String::from("/") + &path_vec.join("/");
     let parent_dd = match dir::open_dir(tx.clone(), fd_table.clone(), &parent_path) {
         Ok(d) => d,
         Err(e) => match e {
@@ -311,6 +326,7 @@ pub fn remove_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str)
     Ok(())
 }
 
+// [PASS]
 /// ## Error
 /// 
 /// - NotFound
@@ -333,13 +349,15 @@ pub fn read_file(inode: u32) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
+// [PASS]
 /// ## Error
 /// 
 /// - NotFound
 /// - NoEnoughSpace
 /// - FileIncorrupted
 /// - IoErr
-pub fn write_file(inode_addr: u32, buf: &Vec<u8>) -> Result<()> {
+pub fn write_file(inode_addr: u32, buf: &mut Vec<u8>) -> Result<()> {
+    buf.push(0);
     let blocks_len = buf.len().div_ceil(disk::BLOCK_SIZE as usize);
     let mut inode = inode::load_inode(inode_addr)?;
     let mut blocks = inode::get_blocks(&inode)?;

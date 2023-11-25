@@ -1,3 +1,4 @@
+ // [PASS]
  /*
  * iterate path in paths:
  *     if path doesn't exist
@@ -27,7 +28,7 @@ use crate::fs::Rwx;
 use crate::fs::{metadata, open_dir};
 
 // define uasge and permission
-const USAGE: &str = "Usage: ls [-a] [-l] [name1] [name2] ...\n";
+const USAGE: &str = "Usage: ls [-la] <file>...\n";
 const PERMISSION: (bool, bool, bool) = (true, false, false);
 
 // get user's rwx and convert to string
@@ -81,18 +82,18 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
     for path in &matches.free {
         let new_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
             Ok(p) => p,
-            Err(e) => return (ctx, format!("Cannot convert '{}' to absolute path\n", &path)),
+            Err(_) => return (ctx, format!("ls: Cannot convert '{}' to absolute path\n", &path)),
         };
 
         let meta = match metadata(&mut ctx.tx, &new_path) {
             Ok(m) => m,
-            Err(e) => return (ctx, format!("Cannot find '{}'\n", &path)),
+            Err(_) => return (ctx, format!("ls: Cannot find '{}'\n", &path)),
         };
 
         // check permission
         let rwx = permission::check_permission(ctx.uid, &meta, PERMISSION);
         if !rwx {
-            return_str += &format!("Permission denied\n");
+            return_str += &format!("ls: Permission denied\n");
             continue;
         }
 
@@ -103,11 +104,11 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
             // get sub entris of path
             let mut new_dd = match open_dir(&mut ctx.tx, &new_path) {
                 Ok(dd) => dd,
-                Err(e) => return (ctx, format!("Cannot open directory: '{}'\n", &path)),
+                Err(_) => return (ctx, format!("ls: Cannot open directory: '{}'\n", &path)),
             };
             let new_vec = match new_dd.read() {
                 Ok(v) => v,
-                Err(e) => return (ctx, format!("Cannot read directory: '{}'\n", &path)),
+                Err(_) => return (ctx, format!("ls: Cannot read directory: '{}'\n", &path)),
             };
 
             // iterate entry in sub entris
@@ -117,15 +118,15 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                 let parent_path = new_path.clone();
                 let sub_path = match utils::convert_path_to_abs(&parent_path, &sub_name) {
                     Ok(p) => p,
-                    Err(e) => {
-                        return_str += &format!("Cannot convert '{}' to absolute path\n", &sub_name);
+                    Err(_) => {
+                        return_str += &format!("ls: Cannot convert '{}' to absolute path\n", &sub_name);
                         continue;
                     }
                 };
                 let sub_meta = match metadata(&mut ctx.tx, &sub_path) {
                     Ok(m) => m,
-                    Err(e) => {
-                        return_str += &format!("Connot find '{}'\n", &sub_path);
+                    Err(_) => {
+                        return_str += &format!("ls: Cannot find '{}'\n", &sub_path);
                         continue;
                     }
                 };
@@ -133,7 +134,7 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                 match sub_name.get(0..1) {
                     // if sub path is a hidden path
                     Some(c) => {
-                        if c == "." {
+                        if c == "." && !all {
                             continue;
                         }
                     },
@@ -171,17 +172,19 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                     return_str += "  ";
                 }
             }
-            return_str += "\n";
+            if !list_format {
+                return_str += "\n";
+            }
         }
         else {
             // get file
             let new_path = match utils::convert_path_to_abs(&ctx.wd, &path) {
                 Ok(p) => p,
-                Err(e) => return (ctx, format!("Cannot convert '{}' to absolute path\n", path)),
+                Err(_) => return (ctx, format!("ls: Cannot convert '{}' to absolute path\n", path)),
             };
             let meta = match metadata(&mut ctx.tx, &new_path) {
                 Ok(m) => m,
-                Err(e) => return (ctx, format!("Cannot find '{}'\n", path)),
+                Err(_) => return (ctx, format!("ls: Cannot find '{}'\n", path)),
             };
 
             // get file path name
@@ -194,7 +197,7 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
             match filename.get(0..0) {
                 // if file is a hidden file
                 Some(c) => {
-                    if c == "." {
+                    if c == "." && !all {
                         continue;
                     }
                 },
@@ -215,10 +218,11 @@ pub fn ls(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                 let time_str = format!("{} {:>2} {:0>2}:{:0>2}", MONTH[mo as usize], d, h, mi);
                 return_str += &format!("{:>7} {:>8} {:>10} {:>12} ", permission_str, owner_str, size_str, time_str);
             }
-            return_str += &filename;
 
+            return_str += &filename;
             return_str += "\n";
         }
+        return_str += "\n";
     }
 
     (ctx, return_str)

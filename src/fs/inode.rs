@@ -169,6 +169,7 @@ pub fn alloc_inode(owner: u8, is_dir: bool) -> Result<(u32, Inode)> {
     Ok((addr, inode))
 }
 
+// [PASS]
 /// ## Error
 /// 
 /// - InvalidAddr

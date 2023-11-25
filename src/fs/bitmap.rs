@@ -78,7 +78,7 @@ impl BlockBitmap {
 
     pub fn set_false(&mut self, pos: u32) -> Result<()> {
         let map = self.get_u64(pos)?;
-        let flag: u64 = !(1 << (pos % 64));
+        let flag: u64 = 1 << (pos % 64);
         self.set_u64(pos, map & !flag)?;
         Ok(())
     }
