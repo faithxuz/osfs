@@ -8,6 +8,7 @@ mod ls;
 mod mkdir;
 mod touch;
 mod cat;
+mod echo;
 mod cp;
 mod rm;
 mod check;
@@ -21,6 +22,7 @@ pub use {
     mkdir::mkdir,
     touch::touch,
     cat::cat,
+    echo::echo,
     cp::cp,
     rm::rm,
     check::check,

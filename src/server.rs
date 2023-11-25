@@ -41,6 +41,7 @@ pub fn start_server(fs_tx: mpsc::Sender<fs::FsReq>) {
     map.insert(String::from("ls"), services::ls);
     map.insert(String::from("touch"), services::touch);
     map.insert(String::from("cat"), services::cat);
+    map.insert(String::from("echo"), services::echo);
     map.insert(String::from("cp"), services::cp);
     map.insert(String::from("rm"), services::rm);
     map.insert(String::from("mkdir"), services::mkdir);

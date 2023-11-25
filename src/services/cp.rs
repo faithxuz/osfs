@@ -99,26 +99,31 @@ fn copy(ctx: &mut Context, src_path: &str, tgt_path: &str, copy_dir: bool, verbo
             };
 
             // copy recursively
+            let mut tgt_path = String::from(tgt_path);
+            tgt_path += "/";
+            tgt_path += &sub_entry.name;
             copy(ctx, &sub_path, &tgt_path, copy_dir, verbose);
         }
     } else {
         // read source file
         let mut src_fd = match open_file(&mut ctx.tx, &src_path) {
             Ok(fd) => fd,
-            Err(e) => return format!("Cannot open file: '{}'\n", src_path),
+            Err(e) => return format!("Cannot open file: '{}'\n", &src_path),
         };
         let mut tgt_fd = match create_file(&mut ctx.tx, &tgt_path, ctx.uid) {
             Ok(fd) => fd,
-            Err(e) => return format!("Cannot create file: '{}'\n", tgt_path),
+            Err(e) => return format!("Cannot create file: '{}'\n", &tgt_path),
         };
 
         let src_vec = match src_fd.read() {
             Ok(v) => v,
-            Err(e) => return format!("Cannot read file: '{}'\n", src_path),
+            Err(e) => return format!("Cannot read file: '{}'\n", &src_path),
         };
 
         // write into target file
-        tgt_fd.write(&src_vec);
+        if let Err(e) = tgt_fd.write(&src_vec) {
+            return format!("Cannot write to file: '{}'\n", &tgt_path)
+        }
     }
 
     // add detailed info

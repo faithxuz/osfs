@@ -83,7 +83,7 @@ pub fn cat(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
 
         // open file
         if meta.is_dir() {
-            return_str += &format!("'{}' is a directory", file_path)[..];
+            return_str += &format!("'{}' is a directory\n", file_path)[..];
         }
         let mut file_fd = match open_file(&mut ctx.tx, &file_path) {
             Ok(fd) => fd,
@@ -120,7 +120,8 @@ pub fn cat(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
             output_vec.push(b'\n');
         }
         // convert output vector to string
-        return_str += &String::from_utf8_lossy(&output_vec).into_owned();
+        return_str.push_str(&String::from_utf8_lossy(&output_vec));
+        // return_str += &String::from_utf8_lossy(&output_vec).into_owned();
     }
 
     (ctx, return_str)
