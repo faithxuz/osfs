@@ -194,7 +194,7 @@ pub fn open_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str) -
 /// - IoErr(e)
 pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str, uid: u8) -> Result<Fd> {
     let mut path_vec: Vec<&str> = path.split('/').collect();
-    let dir_name = String::from(match path_vec.pop() {
+    let file_name = String::from(match path_vec.pop() {
         Some(n) => n,
         None => return Err(FdError::InvalidPath)
     });
@@ -221,7 +221,7 @@ pub fn create_file(tx: Sender<FsReq>, fd_table: Arc<Mutex<FdTable>>, path: &str,
     let mut inode = inode::alloc_inode(uid, false)?;
 
     // add parent/new
-    if let Err(e) = dir::dir_add_entry(parent_dd.inode_addr(), inode.0, &dir_name) {
+    if let Err(e) = dir::dir_add_entry(parent_dd.inode_addr(), inode.0, &file_name) {
         match e {
             DdError::DirIncorrupted => return Err(FdError::FileIncorrupted),
             DdError::NoEnoughSpace => return Err(FdError::NoEnoughSpace),
@@ -362,6 +362,7 @@ pub fn write_file(inode_addr: u32, buf: &mut Vec<u8>) -> Result<()> {
     let blocks_len = buf.len().div_ceil(disk::BLOCK_SIZE as usize);
     let mut inode = inode::load_inode(inode_addr)?;
     let mut blocks = inode::get_blocks(&inode)?;
+    inode.size = buf.len() as u32;
 
     if blocks.len() > blocks_len {
         // free

@@ -49,7 +49,7 @@ fn copy(ctx: &mut Context, src_path: &str, tgt_path: &str, copy_dir: bool, verbo
 
     let src_meta = match metadata(&mut ctx.tx, src_path) {
         Ok(m) => m,
-        Err(e) => return format!("Cannot find '{}'\n", src_path),
+        Err(_) => return format!("Cannot find '{}'\n", src_path),
     };
 
     // check source permission
@@ -71,17 +71,17 @@ fn copy(ctx: &mut Context, src_path: &str, tgt_path: &str, copy_dir: bool, verbo
 
         let mut tgt_dd = match create_dir(&mut ctx.tx, &tgt_path, ctx.uid) {
             Ok(dd) => dd,
-            Err(e) => return format!("Cannot create directory: '{}'\n", tgt_path),
+            Err(_) => return format!("Cannot create directory: '{}'\n", tgt_path),
         };
 
         // get sub entris of source dir
         let mut src_dd = match open_dir(&mut ctx.tx, &src_path) {
             Ok(dd) => dd,
-            Err(e) => return format!("Cannot open directory: '{}'\n", src_path),
+            Err(_) => return format!("Cannot open directory: '{}'\n", src_path),
         };
         let src_vec = match src_dd.read() {
             Ok(v) => v,
-            Err(e) => return format!("Cannot read file: '{}'\n", src_path),
+            Err(_) => return format!("Cannot read file: '{}'\n", src_path),
         };
         
         // iterate entry in sub entris
@@ -95,7 +95,7 @@ fn copy(ctx: &mut Context, src_path: &str, tgt_path: &str, copy_dir: bool, verbo
             let parent_path = src_path;
             let sub_path = match utils::convert_path_to_abs(&parent_path, &sub_entry.name) {
                 Ok(p) => p,
-                Err(e) => return format!("Cannot convert '{}' to absolute path\n", sub_entry.name),
+                Err(_) => return format!("Cannot convert '{}' to absolute path\n", sub_entry.name),
             };
 
             // copy recursively
@@ -108,20 +108,20 @@ fn copy(ctx: &mut Context, src_path: &str, tgt_path: &str, copy_dir: bool, verbo
         // read source file
         let mut src_fd = match open_file(&mut ctx.tx, &src_path) {
             Ok(fd) => fd,
-            Err(e) => return format!("Cannot open file: '{}'\n", &src_path),
+            Err(_) => return format!("Cannot open file: '{}'\n", &src_path),
         };
         let mut tgt_fd = match create_file(&mut ctx.tx, &tgt_path, ctx.uid) {
             Ok(fd) => fd,
-            Err(e) => return format!("Cannot create file: '{}'\n", &tgt_path),
+            Err(_) => return format!("Cannot create file: '{}'\n", &tgt_path),
         };
 
         let src_vec = match src_fd.read() {
             Ok(v) => v,
-            Err(e) => return format!("Cannot read file: '{}'\n", &src_path),
+            Err(_) => return format!("Cannot read file: '{}'\n", &src_path),
         };
 
         // write into target file
-        if let Err(e) = tgt_fd.write(&src_vec) {
+        if let Err(_) = tgt_fd.write(&src_vec) {
             return format!("Cannot write to file: '{}'\n", &tgt_path)
         }
     }
@@ -169,11 +169,11 @@ pub fn cp(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         2 => {
             let src_path = match utils::convert_path_to_abs(&ctx.wd, &matches.free[0]) {
                 Ok(p) => p,
-                Err(e) => return (ctx, format!("Cannot convert '{}' to absolute path\n", &matches.free[0])),
+                Err(_) => return (ctx, format!("Cannot convert '{}' to absolute path\n", &matches.free[0])),
             };
             let tgt_path = match utils::convert_path_to_abs(&ctx.wd, &matches.free[1]) {
                 Ok(p) => p,
-                Err(e) => return (ctx, format!("Cannot convert '{}' to absolute path\n", &matches.free[1])),
+                Err(_) => return (ctx, format!("Cannot convert '{}' to absolute path\n", &matches.free[1])),
             };
 
             let tgt_meta = match metadata(&mut ctx.tx, &tgt_path) {
@@ -190,7 +190,7 @@ pub fn cp(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                             .next()
                             .unwrap_or(&src_path)
                             .to_string();
-                        let tgt_path_new = format!("'{}'/'{}'\n", tgt_path, src_path_append);
+                        let tgt_path_new = format!("{}/{}", tgt_path, src_path_append);
                         let tmp = copy(&mut ctx, &src_path, &tgt_path_new, copy_dir, verbose);
                         return (ctx, tmp);
                     } else {
@@ -198,7 +198,7 @@ pub fn cp(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                         return (ctx, tmp);
                     }
                 }
-                Err(e) => {
+                Err(_) => {
                     let tmp = copy(&mut ctx, &src_path, &tgt_path, copy_dir, verbose);
                     return (ctx, tmp)
                 }
@@ -207,7 +207,7 @@ pub fn cp(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
         _ => {
             let tgt_path = match utils::convert_path_to_abs(&ctx.wd, &matches.free[len - 1]) {
                 Ok(p) => p,
-                Err(e) => return (ctx, format!("Cannot convert '{}' to absolute path\n\n", &matches.free[len - 1])),
+                Err(_) => return (ctx, format!("Cannot convert '{}' to absolute path\n\n", &matches.free[len - 1])),
             };
 
             let tgt_meta = match metadata(&mut ctx.tx, &tgt_path) {
@@ -222,7 +222,7 @@ pub fn cp(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                         for src in &matches.free[0..len - 1] {
                             let src_path = match utils::convert_path_to_abs(&ctx.wd, &src) {
                                 Ok(p) => p,
-                                Err(e) => {
+                                Err(_) => {
                                     return_str += &format!("Cannot convert '{}' to absolute path\n\n", src);
                                     continue;
                                 }
@@ -232,7 +232,7 @@ pub fn cp(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                                 .next()
                                 .unwrap_or(&src_path)
                                 .to_string();
-                            let tgt_path_new = format!("'{}'/'{}'\n", tgt_path, src_path_append);
+                            let tgt_path_new = format!("{}/{}", tgt_path, src_path_append);
                             return_str += &copy(&mut ctx, &src_path, &tgt_path_new, copy_dir, verbose);
                         }
                         return (ctx, return_str);
@@ -240,7 +240,7 @@ pub fn cp(mut ctx: Context, args: Vec<&str>) -> (Context, String) {
                         return (ctx, format!("'{}' is not a directory\n\n", &matches.free[len - 1]));
                     }
                 }
-                Err(e) => return (ctx, format!("'{}' doesn't exist\n\n", &matches.free[len - 1])),
+                Err(_) => return (ctx, format!("'{}' doesn't exist\n\n", &matches.free[len - 1])),
             };
         }
     }
