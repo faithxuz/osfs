@@ -243,7 +243,7 @@ pub fn get_blocks(inode: &Inode) -> Result<Vec<u32>> {
     }
     
     // read double indirect blocks
-    match read_ind_block(inode.indirect_block) {
+    match read_ind_block(inode.double_block) {
         Ok(u) => {
             for db in u.1 {
                 if db == 0 {
